@@ -1,5 +1,121 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 
+// ANSI 转义码处理
+const ANSI_REGEX = /\x1b\[([0-9;]*)m/g;
+const ANSI_COLORS = {
+  // 标准颜色
+  30: "#000", 31: "#c91b00", 32: "#00c200", 33: "#c7c400",
+  34: "#0225c7", 35: "#c930c7", 36: "#00c5c7", 37: "#c7c7c7",
+  // 亮色
+  90: "#676767", 91: "#ff6d67", 92: "#5ff967", 93: "#fefb67",
+  94: "#6871ff", 95: "#ff76ff", 96: "#5ffdff", 97: "#fefefe",
+};
+
+// 解析 ANSI 颜色
+function parseAnsiColor(code) {
+  const parts = code.split(";").map(Number);
+  if (parts.length >= 3 && parts[0] === 38 && parts[1] === 2) {
+    // 24-bit 真彩色: 38;2;r;g;b
+    return `rgb(${parts[2]},${parts[3]},${parts[4]})`;
+  }
+  if (parts.length >= 3 && parts[0] === 48 && parts[1] === 2) {
+    // 背景色: 48;2;r;g;b
+    return `rgb(${parts[2]},${parts[3]},${parts[4]})`;
+  }
+  return ANSI_COLORS[parts[0]] || null;
+}
+
+// 清除 ANSI 转义码
+function stripAnsi(text) {
+  return text.replace(/\x1b\[[0-9;]*m/g, "").replace(/\x1b\[K/g, "");
+}
+
+// 将 ANSI 转换为 HTML
+function ansiToHtml(text) {
+  if (!text) return "";
+
+  let result = "";
+  let currentColor = null;
+  let currentBg = null;
+  let lastIndex = 0;
+
+  // 匹配所有 ANSI 转义码
+  const regex = /\x1b\[([0-9;]*)m|\x1b\[K/g;
+  let match;
+
+  while ((match = regex.exec(text)) !== null) {
+    // 添加转义码之前的文本
+    if (match.index > lastIndex) {
+      const segment = text.substring(lastIndex, match.index);
+      if (currentColor || currentBg) {
+        const style = [];
+        if (currentColor) style.push(`color:${currentColor}`);
+        if (currentBg) style.push(`background-color:${currentBg}`);
+        result += `<span style="${style.join(";")}">${escapeHtml(segment)}</span>`;
+      } else {
+        result += escapeHtml(segment);
+      }
+    }
+
+    // 处理转义码
+    const code = match[1];
+    if (code) {
+      const parts = code.split(";").map(Number);
+
+      if (parts.includes(0)) {
+        // 重置
+        currentColor = null;
+        currentBg = null;
+      }
+
+      // 检查前景色
+      for (const part of parts) {
+        if ((part >= 30 && part <= 37) || (part >= 90 && part <= 97)) {
+          currentColor = ANSI_COLORS[part];
+        }
+        if (part >= 40 && part <= 47) {
+          currentBg = ANSI_COLORS[part - 10];
+        }
+      }
+
+      // 24-bit 真彩色
+      if (parts.length >= 5 && parts[0] === 38 && parts[1] === 2) {
+        currentColor = `rgb(${parts[2]},${parts[3]},${parts[4]})`;
+      }
+      if (parts.length >= 5 && parts[0] === 48 && parts[1] === 2) {
+        currentBg = `rgb(${parts[2]},${parts[3]},${parts[4]})`;
+      }
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  // 添加剩余文本
+  if (lastIndex < text.length) {
+    const segment = text.substring(lastIndex);
+    if (currentColor || currentBg) {
+      const style = [];
+      if (currentColor) style.push(`color:${currentColor}`);
+      if (currentBg) style.push(`background-color:${currentBg}`);
+      result += `<span style="${style.join(";")}">${escapeHtml(segment)}</span>`;
+    } else {
+      result += escapeHtml(segment);
+    }
+  }
+
+  return result;
+}
+
+// HTML 转义
+function escapeHtml(text) {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
 // 默认日志级别配置
 const DEFAULT_LEVELS = [
   { id: "error", label: "ERROR", color: "#f85149", bgColor: "rgba(248,81,73,0.1)", pattern: /\b(error|err|fatal|panic|critical)\b/i },
@@ -33,6 +149,7 @@ export default function LogViewer({ filePath, fileName, onClose }) {
   const [newLevel, setNewLevel] = useState({ id: "", label: "", color: "#58a6ff", pattern: "" });
   const [stats, setStats] = useState({});
   const [selectedLine, setSelectedLine] = useState(null);
+  const [ansiMode, setAnsiMode] = useState("render"); // "render" | "strip" | "raw"
 
   const containerRef = useRef(null);
   const refreshTimerRef = useRef(null);
@@ -63,8 +180,10 @@ export default function LogViewer({ filePath, fileName, onClose }) {
 
   // 检测日志级别
   function detectLevel(line, levels) {
+    // 先清除 ANSI 代码再匹配
+    const cleanLine = stripAnsi(line);
     for (const level of levels) {
-      if (level.pattern.test(line)) {
+      if (level.pattern.test(cleanLine)) {
         return level.id;
       }
     }
@@ -118,7 +237,8 @@ export default function LogViewer({ filePath, fileName, onClose }) {
     if (searchQuery) {
       const query = searchCaseSensitive ? searchQuery : searchQuery.toLowerCase();
       filtered = filtered.filter(line => {
-        const text = searchCaseSensitive ? line.raw : line.raw.toLowerCase();
+        // 搜索清除 ANSI 代码后的内容
+        const text = searchCaseSensitive ? stripAnsi(line.raw) : stripAnsi(line.raw).toLowerCase();
         return text.includes(query);
       });
     }
@@ -272,6 +392,20 @@ export default function LogViewer({ filePath, fileName, onClose }) {
           <button style={styles.toolBtn} onClick={exportFiltered} title="导出过滤后的日志">
             📥
           </button>
+          <button
+            style={{
+              ...styles.toolBtn,
+              ...(ansiMode === "render" ? styles.toolBtnActive : {})
+            }}
+            onClick={() => setAnsiMode(prev => {
+              if (prev === "render") return "strip";
+              if (prev === "strip") return "raw";
+              return "render";
+            })}
+            title={`ANSI 模式: ${ansiMode === "render" ? "渲染颜色" : ansiMode === "strip" ? "清除代码" : "原始文本"}`}
+          >
+            {ansiMode === "render" ? "🎨" : ansiMode === "strip" ? "📝" : "📄"} ANSI
+          </button>
           <button style={styles.toolBtn} onClick={() => setShowSettings(!showSettings)} title="设置">
             ⚙️
           </button>
@@ -401,7 +535,15 @@ export default function LogViewer({ filePath, fileName, onClose }) {
                   {getLevelLabel(line.level)}
                 </span>
               )}
-              <span style={styles.logText}>{highlightText(line.raw)}</span>
+              <span style={styles.logText}>
+                {ansiMode === "render" ? (
+                  <span dangerouslySetInnerHTML={{ __html: highlightText(ansiToHtml(line.raw)) }} />
+                ) : ansiMode === "strip" ? (
+                  highlightText(stripAnsi(line.raw))
+                ) : (
+                  highlightText(line.raw)
+                )}
+              </span>
             </div>
           ))
         )}
@@ -469,6 +611,10 @@ const styles = {
     cursor: "pointer",
     fontSize: 12,
     color: "#c9d1d9",
+  },
+  toolBtnActive: {
+    background: "#0e639c",
+    borderColor: "#58a6ff",
   },
   closeBtn: {
     background: "none",
