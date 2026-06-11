@@ -271,7 +271,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   };
 
   // 压缩文件
-  const compressFiles = async (format = "zip") => {
+  const compressFiles = async (format = "tar.gz") => {
     if (selectedFiles.size === 0) {
       alert("请先选择要压缩的文件");
       return;
@@ -282,7 +282,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     );
 
     const firstFile = [...selectedFiles][0];
-    const defaultName = firstFile.replace(/\.[^/.]+$/, "") + (format === "zip" ? ".zip" : ".tar.gz");
+    const defaultName = firstFile.replace(/\.[^/.]+$/, "") + ".tar.gz";
     const outputPath = currentPath.endsWith("/")
       ? currentPath + defaultName
       : currentPath + "/" + defaultName;
@@ -1059,14 +1059,6 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                 </button>
               )}
               <div style={styles.menuDivider} />
-              {selectedFiles.size > 0 && (
-                <button style={styles.menuItem} onClick={() => {
-                  compressFiles("zip");
-                  setContextMenu(null);
-                }}>
-                  📦 压缩为 ZIP
-                </button>
-              )}
               {selectedFiles.size > 0 && (
                 <button style={styles.menuItem} onClick={() => {
                   compressFiles("tar.gz");

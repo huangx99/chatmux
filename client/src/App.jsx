@@ -19,6 +19,13 @@ function useIsMobile() {
   return isMobile;
 }
 
+function pickFallbackSessionId(sessions, deletedId) {
+  const deletedIndex = sessions.findIndex((s) => s.id === deletedId);
+  const nextSessions = sessions.filter((s) => s.id !== deletedId);
+  const fallback = nextSessions[deletedIndex] || nextSessions[deletedIndex - 1] || nextSessions[0];
+  return fallback?.id || null;
+}
+
 export default function App() {
   const isMobile = useIsMobile();
   const [sessions, setSessions] = useState([]);
@@ -163,6 +170,27 @@ export default function App() {
     }
   }, [sessions, attachSession]);
 
+  useEffect(() => {
+    if (sessions.length === 0) {
+      if (activeId !== null) setActiveId(null);
+      return;
+    }
+    if (!activeId || !sessions.some((s) => s.id === activeId)) {
+      setActiveId(sessions[0].id);
+    }
+  }, [activeId, sessions]);
+
+  useEffect(() => {
+    if (!activeId) return;
+    const s = sessions.find((x) => x.id === activeId);
+    if (!s || s.type === "folder" || s.command === "__folder__") return;
+    const ws = wsMapRef.current.get(activeId);
+    if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
+      if (ws) wsMapRef.current.delete(activeId);
+      attachSession(activeId);
+    }
+  }, [activeId, sessions, attachSession]);
+
   const handleAdd = useCallback((command, args = [], cwd = null) => {
     // 处理文件夹类型 - 通过服务器 API 创建以实现多端同步
     if (command === "__folder__") {
@@ -242,6 +270,8 @@ export default function App() {
   }, []);
 
   const handleDelete = useCallback((id) => {
+    const fallbackId = pickFallbackSessionId(sessions, id);
+
     // 处理文件夹类型的删除
     if (id.startsWith("folder_")) {
       setOpenFolders((prev) => {
@@ -250,7 +280,7 @@ export default function App() {
         return next;
       });
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      setActiveId((prev) => (prev === id ? null : prev));
+      setActiveId((current) => (current === id ? fallbackId : current));
       return;
     }
 
@@ -259,8 +289,8 @@ export default function App() {
     writerMapRef.current.delete(id);
     fetch(`/api/sessions/${id}`, { method: "DELETE" }).catch(() => {});
     setSessions((prev) => prev.filter((s) => s.id !== id));
-    setActiveId((prev) => (prev === id ? null : prev));
-  }, []);
+    setActiveId((current) => (current === id ? fallbackId : current));
+  }, [sessions]);
 
   const handleRename = useCallback((id, label) => {
     setSessions((prev) => prev.map((s) => s.id === id ? { ...s, label } : s));

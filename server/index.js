@@ -2,13 +2,14 @@ import express from "express";
 import { WebSocketServer } from "ws";
 import { createServer } from "http";
 import { fileURLToPath } from "url";
-import { dirname, join, resolve } from "path";
+import { basename, dirname, join, relative, resolve } from "path";
 import { readdir, stat, unlink, rename, copyFile, readFile, writeFile, mkdir } from "fs/promises";
 import { createReadStream, existsSync } from "fs";
-import { execSync, exec } from "child_process";
+import { execSync, exec, execFile } from "child_process";
 import { promisify } from "util";
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 import os from "os";
 import multer from "multer";
 import {
@@ -33,6 +34,20 @@ function expandHome(p) {
     return join(os.homedir(), p.slice(1));
   }
   return p;
+}
+
+async function createTarGzArchive(sourceFiles, output) {
+  const baseDir = dirname(sourceFiles[0]);
+  const skipPath = resolve(output);
+  const entries = sourceFiles
+    .filter((sourceFile) => resolve(sourceFile) !== skipPath)
+    .map((sourceFile) => relative(baseDir, sourceFile) || basename(sourceFile));
+
+  if (entries.length === 0) {
+    throw new Error("没有可压缩的文件");
+  }
+
+  await execFileAsync("tar", ["-czf", output, "-C", baseDir, "--", ...entries]);
 }
 
 function bindPty(ws, session) {
@@ -307,7 +322,7 @@ app.post("/api/files/mkdir", async (req, res) => {
 // REST: 压缩文件
 app.post("/api/files/compress", async (req, res) => {
   try {
-    const { files, format = "zip", outputPath } = req.body;
+    const { files, format = "tar.gz", outputPath } = req.body;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
       return res.status(400).json({ error: "请选择要压缩的文件" });
@@ -317,19 +332,15 @@ app.post("/api/files/compress", async (req, res) => {
     const output = expandHome(outputPath);
 
     // 确保输出目录存在
-    const outputDir = output.substring(0, output.lastIndexOf("/"));
+    const outputDir = dirname(output);
     await mkdir(outputDir, { recursive: true });
 
-    let command;
-    if (format === "zip") {
-      command = `cd "${sourceFiles[0].substring(0, sourceFiles[0].lastIndexOf("/"))}" && zip -r "${output}" ${sourceFiles.map(f => `"${f.substring(f.lastIndexOf("/") + 1)}"`).join(" ")}`;
-    } else if (format === "tar.gz") {
-      command = `tar -czf "${output}" ${sourceFiles.map(f => `"${f}"`).join(" ")}`;
-    } else {
+    if (format !== "tar.gz") {
       return res.status(400).json({ error: "不支持的压缩格式" });
     }
 
-    await execAsync(command);
+    await createTarGzArchive(sourceFiles, output);
+
     res.json({ success: true, outputPath: output });
   } catch (e) {
     res.status(500).json({ error: e.message });

@@ -52,13 +52,23 @@
     }
   },
   {
-    "id": "3ddde6f0-bbd8-4c6e-a13a-888799c65046",
+    "id": "e4ea6054-37b4-4d00-8430-da87f776759e",
     "command": "bash",
     "args": [],
     "cwd": "/home/huangxuan",
     "label": "bash",
     "type": "terminal",
-    "alive": false,
+    "alive": true,
+    "explorerState": null
+  },
+  {
+    "id": "2320d411-1166-4262-ad1d-c04089630800",
+    "command": "bash",
+    "args": [],
+    "cwd": "/home/huangxuan/下载",
+    "label": "bash",
+    "type": "terminal",
+    "alive": true,
     "explorerState": null
   }
 ]

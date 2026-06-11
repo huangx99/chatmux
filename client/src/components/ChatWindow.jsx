@@ -37,7 +37,20 @@ export default function ChatWindow({
   }, [showSearch]);
 
   const createTerminal = useCallback((session, container) => {
-    if (termsRef.current.has(session.id)) return;
+    const existing = termsRef.current.get(session.id);
+    if (existing) {
+      if (existing.container === container && container.hasChildNodes()) return;
+
+      try {
+        existing.term.dispose();
+      } catch (e) {
+        console.error("重建终端失败:", e);
+      }
+      termsRef.current.delete(session.id);
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+    }
 
     const term = new Terminal({
       fontSize: 14,
