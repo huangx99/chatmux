@@ -1,0 +1,9 @@
+{
+  "name": "chatmux",
+  "version": "1.0.0",
+  "scripts": {
+    "dev": "concurrently \"cd server && node index.js\" \"cd client && npx vite --host\"",
+    "server": "cd server && node index.js",
+    "client": "cd client && npx vite --host"
+  }
+}

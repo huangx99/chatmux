@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <title>ChatMux</title>
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body {
+        height: 100%;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        overflow: hidden;
+      }
+      #root {
+        height: 100%;
+        height: 100dvh;
+        height: -webkit-fill-available;
+      }
+      /* 移动端终端 */
+      @media (max-width: 767px) {
+        .xterm { font-size: 12px !important; }
+        .xterm-viewport {
+          overflow-y: scroll !important;
+          -webkit-overflow-scrolling: touch !important;
+        }
+        .xterm-viewport::-webkit-scrollbar {
+          width: 6px !important;
+          display: block !important;
+        }
+        .xterm-viewport::-webkit-scrollbar-track {
+          background: transparent !important;
+        }
+        .xterm-viewport::-webkit-scrollbar-thumb {
+          background: rgba(255,255,255,0.25) !important;
+          border-radius: 3px !important;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

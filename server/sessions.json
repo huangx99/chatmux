@@ -1,0 +1,18 @@
+[
+  {
+    "id": "b74d93d5-bbcc-4cb7-bf1f-e01534e63a9f",
+    "command": "bash",
+    "args": [],
+    "cwd": "/home/huangxuan/code",
+    "label": "bash",
+    "alive": true
+  },
+  {
+    "id": "6418ad25-14a2-4ddf-9902-d32ed8ee9a42",
+    "command": "bash",
+    "args": [],
+    "cwd": "/home/huangxuan",
+    "label": "bash",
+    "alive": true
+  }
+]

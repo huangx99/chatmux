@@ -1,0 +1,42 @@
+.sidebar-item {
+  padding: 10px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: background 0.15s;
+}
+
+.sidebar-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.sidebar-item.active {
+  background: #16213e;
+}
+
+.sidebar-item .actions {
+  display: flex;
+  gap: 2;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sidebar-item:hover .actions {
+  opacity: 1;
+}
+
+.sidebar-item .action-btn {
+  background: none;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.sidebar-item .action-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}

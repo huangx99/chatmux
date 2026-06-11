@@ -1,0 +1,225 @@
+import * as pty from "node-pty";
+import { randomUUID } from "crypto";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const STORE_FILE = join(__dirname, "sessions.json");
+const BUFFER_MAX = 1024 * 100; // 每个会话保留最近 100KB 输出
+
+const sessions = new Map();
+
+// ---- 持久化 ----
+
+function saveStore() {
+  const data = [...sessions.values()].map((s) => ({
+    id: s.id,
+    command: s.command,
+    args: s.args,
+    cwd: s.cwd,
+    label: s.label,
+    alive: s.alive,
+  }));
+  writeFileSync(STORE_FILE, JSON.stringify(data, null, 2));
+}
+
+function loadStore() {
+  if (!existsSync(STORE_FILE)) return [];
+  try {
+    return JSON.parse(readFileSync(STORE_FILE, "utf-8"));
+  } catch {
+    return [];
+  }
+}
+
+// ---- 输出缓冲 ----
+
+function createBuffer() {
+  const chunks = [];
+  let size = 0;
+
+  return {
+    write(data) {
+      chunks.push(data);
+      size += Buffer.byteLength(data);
+      // 超过上限时从头丢弃
+      while (size > BUFFER_MAX && chunks.length > 1) {
+        const removed = chunks.shift();
+        size -= Buffer.byteLength(removed);
+      }
+    },
+    dump() {
+      return chunks.join("");
+    },
+    clear() {
+      chunks.length = 0;
+      size = 0;
+    },
+  };
+}
+
+// 给 PTY 的 onData 挂缓冲
+function attachBuffer(session) {
+  if (!session.pty) return;
+  session.pty.onData((data) => {
+    session.buffer.write(data);
+  });
+}
+
+// ---- 核心操作 ----
+
+export function createSession(command, args = [], options = {}) {
+  const id = options.id || randomUUID();
+  let shell;
+  try {
+    shell = pty.spawn(command, args, {
+      name: "xterm-256color",
+      cols: options.cols || 80,
+      rows: options.rows || 24,
+      cwd: options.cwd || process.env.HOME,
+      env: { ...process.env, TERM: "xterm-256color" },
+    });
+  } catch (e) {
+    const session = {
+      id,
+      command,
+      args,
+      cwd: options.cwd || process.env.HOME,
+      label: options.label || command,
+      pty: null,
+      buffer: createBuffer(),
+      createdAt: Date.now(),
+      alive: false,
+    };
+    sessions.set(id, session);
+    saveStore();
+    return session;
+  }
+
+  const session = {
+    id,
+    command,
+    args,
+    cwd: options.cwd || process.env.HOME,
+    label: options.label || command,
+    pty: shell,
+    buffer: createBuffer(),
+    createdAt: Date.now(),
+    alive: true,
+  };
+
+  // 缓冲所有输出
+  attachBuffer(session);
+
+  shell.onExit(({ exitCode }) => {
+    session.alive = false;
+    saveStore();
+  });
+
+  sessions.set(id, session);
+  saveStore();
+  return session;
+}
+
+export function getSession(id) {
+  return sessions.get(id);
+}
+
+export function getSessionBuffer(id) {
+  const session = sessions.get(id);
+  return session ? session.buffer.dump() : "";
+}
+
+export function getAllSessions() {
+  return [...sessions.values()].map(({ pty, buffer, ...rest }) => rest);
+}
+
+export function writeToSession(id, data) {
+  const session = sessions.get(id);
+  if (session && session.alive && session.pty) {
+    session.pty.write(data);
+  }
+}
+
+export function resizeSession(id, cols, rows) {
+  const session = sessions.get(id);
+  if (session && session.alive && session.pty) {
+    session.pty.resize(cols, rows);
+  }
+}
+
+export function removeSession(id) {
+  const session = sessions.get(id);
+  if (session) {
+    if (session.alive && session.pty) session.pty.kill();
+    sessions.delete(id);
+    saveStore();
+    return true;
+  }
+  return false;
+}
+
+export function renameSession(id, label) {
+  const session = sessions.get(id);
+  if (session) {
+    session.label = label;
+    saveStore();
+  }
+}
+
+// 服务启动时恢复（只恢复元数据，不启动 PTY）
+export function restoreSessions() {
+  const saved = loadStore();
+  for (const meta of saved) {
+    if (sessions.has(meta.id)) continue;
+    const session = {
+      id: meta.id,
+      command: meta.command,
+      args: meta.args || [],
+      cwd: meta.cwd,
+      label: meta.label || meta.command,
+      pty: null,
+      buffer: createBuffer(),
+      createdAt: Date.now(),
+      alive: false,
+    };
+    sessions.set(meta.id, session);
+    console.log(`  恢复会话: ${meta.label} (${meta.command}) — 已退出`);
+  }
+  if (saved.length > 0) saveStore();
+}
+
+// 重新启动已退出会话的 PTY
+export function restartSession(id) {
+  const session = sessions.get(id);
+  if (!session || session.alive) return session;
+
+  try {
+    const shell = pty.spawn(session.command, session.args, {
+      name: "xterm-256color",
+      cols: 80,
+      rows: 24,
+      cwd: session.cwd || process.env.HOME,
+      env: { ...process.env, TERM: "xterm-256color" },
+    });
+
+    session.pty = shell;
+    session.alive = true;
+    session.buffer.clear();
+
+    // 重新挂缓冲
+    attachBuffer(session);
+
+    shell.onExit(() => {
+      session.alive = false;
+      saveStore();
+    });
+
+    saveStore();
+    return session;
+  } catch (e) {
+    console.log(`重启会话失败: ${session.label} — ${e.message}`);
+    return session;
+  }
+}
