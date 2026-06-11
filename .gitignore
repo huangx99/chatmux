@@ -77,3 +77,7 @@ coverage/
 # Temporary folders
 tmp/
 temp/
+
+# User runtime data
+server/sessions.json
+server/bookmarks.json

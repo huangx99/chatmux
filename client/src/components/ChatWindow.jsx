@@ -172,7 +172,23 @@ export default function ChatWindow({
     return (
       <div style={styles.empty}>
         <div style={styles.emptyIcon}>💬</div>
-        <div style={styles.emptyText}>Ctrl+K 命令面板，或点击 ＋ 添加 CLI</div>
+        <div style={styles.emptyTitle}>欢迎使用 ChatMux</div>
+        <div style={styles.emptyText}>选择一个会话类型开始：</div>
+        <div style={styles.emptyActions}>
+          <button
+            style={styles.emptyBtn}
+            onClick={() => onAddSession?.("bash", [], null)}
+          >
+            🖥️ 打开终端
+          </button>
+          <button
+            style={styles.emptyFolderBtn}
+            onClick={() => onAddSession?.("__folder__", [], "~")}
+          >
+            📁 打开文件夹
+          </button>
+        </div>
+        <div style={styles.emptyHint}>Ctrl+K 打开命令面板 | 左上角 ＋ 也可以添加</div>
       </div>
     );
   }
@@ -380,6 +396,19 @@ const styles = {
     alignItems: "center", justifyContent: "center",
     background: "#0d1117", color: "#8b949e",
   },
-  emptyIcon: { fontSize: 48, marginBottom: 16 },
-  emptyText: { fontSize: 14 },
+  emptyIcon: { fontSize: 48, marginBottom: 12 },
+  emptyTitle: { fontSize: 20, fontWeight: 600, color: "#c9d1d9", marginBottom: 8 },
+  emptyText: { fontSize: 14, marginBottom: 20 },
+  emptyActions: { display: "flex", gap: 12, marginBottom: 24 },
+  emptyBtn: {
+    background: "#238636", color: "#fff", border: "none",
+    borderRadius: 8, padding: "10px 20px", fontSize: 14,
+    fontWeight: 500, cursor: "pointer",
+  },
+  emptyFolderBtn: {
+    background: "#1f6feb", color: "#fff", border: "none",
+    borderRadius: 8, padding: "10px 20px", fontSize: 14,
+    fontWeight: 500, cursor: "pointer",
+  },
+  emptyHint: { fontSize: 12, color: "#484f58" },
 };

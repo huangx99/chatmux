@@ -122,7 +122,10 @@ export default function Sidebar({ sessions, activeId, onSelect, onAdd, onDelete,
           </div>
         ))}
         {sessions.length === 0 && (
-          <div style={styles.empty}>Ctrl+K 命令面板 | ＋ 添加 CLI</div>
+          <div style={styles.empty}>
+            <div style={styles.emptyText}>暂无会话</div>
+            <div style={styles.emptyHint}>点击 ＋ 或 Ctrl+K 开始</div>
+          </div>
         )}
       </div>
       <div style={styles.footer}>
