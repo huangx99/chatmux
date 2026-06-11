@@ -93,6 +93,11 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     loadSavedState();
     loadClipboard();
     loadTransfers();
+
+    // 点击其他地方隐藏右键菜单
+    const handleClickOutside = () => setContextMenu(null);
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
   }, [sessionId]);
 
   // 加载剪贴板状态
@@ -675,6 +680,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
             top: contextMenu.y,
           }}
           onClick={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
         >
           {contextMenu.fileName ? (
             <>
