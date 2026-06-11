@@ -2,10 +2,6 @@ import React, { useState } from "react";
 
 const PRESETS = [
   { name: "bash", label: "🐚 Bash", desc: "Shell 终端" },
-  { name: "node", label: "🟢 Node.js", desc: "JavaScript REPL" },
-  { name: "python", label: "🐍 Python", desc: "Python REPL" },
-  { name: "git", label: "📦 Git", desc: "版本控制（进入 bash 后用 git）" },
-  { name: "docker", label: "🐳 Docker", desc: "容器管理 CLI" },
   { name: "folder", label: "📁 文件夹", desc: "浏览文件夹内容" },
 ];
 
