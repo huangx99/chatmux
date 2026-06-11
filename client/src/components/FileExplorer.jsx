@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import FileEditor from "./FileEditor";
+import LogViewer from "./LogViewer";
 
 // 判断是否是文本文件（可编辑）
 function isTextFile(fileName) {
@@ -14,6 +15,13 @@ function isTextFile(fileName) {
   ]);
   const ext = fileName.split(".").pop()?.toLowerCase();
   return textExtensions.has(ext) || !fileName.includes(".");
+}
+
+// 判断是否是日志文件
+function isLogFile(fileName) {
+  const logExtensions = new Set(["log", "out", "err", "output"]);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return logExtensions.has(ext) || fileName.includes("log");
 }
 
 export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
@@ -33,6 +41,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFile, setEditingFile] = useState(null); // { path, name }
+  const [viewingLog, setViewingLog] = useState(null); // { path, name }
   const [draggingFile, setDraggingFile] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -161,6 +170,14 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
       ? currentPath + fileName
       : currentPath + "/" + fileName;
     setEditingFile({ path: filePath, name: fileName });
+  };
+
+  // 打开日志查看器
+  const openLogViewer = (fileName) => {
+    const filePath = currentPath.endsWith("/")
+      ? currentPath + fileName
+      : currentPath + "/" + fileName;
+    setViewingLog({ path: filePath, name: fileName });
   };
 
   // 后退
@@ -619,6 +636,8 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   if (e.detail === 2) {
                     if (entry.isDirectory) {
                       enterDir(entry.name);
+                    } else if (isLogFile(entry.name)) {
+                      openLogViewer(entry.name);
                     } else if (isTextFile(entry.name)) {
                       openFile(entry.name);
                     }
@@ -713,6 +732,17 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
         </div>
       )}
 
+      {/* 日志查看器 */}
+      {viewingLog && (
+        <div style={styles.editorOverlay}>
+          <LogViewer
+            filePath={viewingLog.path}
+            fileName={viewingLog.name}
+            onClose={() => setViewingLog(null)}
+          />
+        </div>
+      )}
+
       {/* 右键菜单 */}
       {contextMenu && (
         <div
@@ -753,6 +783,15 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   setContextMenu(null);
                 }}>
                   ✏️ 编辑
+                </button>
+              )}
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
+               isLogFile(contextMenu.fileName) && (
+                <button style={styles.menuItem} onClick={() => {
+                  openLogViewer(contextMenu.fileName);
+                  setContextMenu(null);
+                }}>
+                  📊 查看日志
                 </button>
               )}
               <div style={styles.menuDivider} />
