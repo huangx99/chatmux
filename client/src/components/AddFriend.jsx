@@ -26,6 +26,9 @@ export default function AddFriend({ onAdd, onClose }) {
     if (cmd === "__folder__") {
       if (cwd.trim()) {
         onAdd("__folder__", [], cwd.trim());
+      } else {
+        // 如果没有选择目录，打开文件浏览器
+        browseDir("~");
       }
       return;
     }
@@ -37,17 +40,14 @@ export default function AddFriend({ onAdd, onClose }) {
   const handlePreset = (name) => {
     if (name === "folder") {
       // 文件夹模式：需要选择目录
-      if (cwd.trim()) {
-        onAdd("__folder__", [], cwd.trim());
-      } else {
-        // 如果没有输入目录，打开文件浏览器选择
+      setCommand("__folder__");
+      if (!cwd.trim()) {
         browseDir("~");
-        // 设置为文件夹模式
-        setCommand("__folder__");
       }
     } else {
+      // 其他预设：填充命令，让用户可以修改工作目录后再提交
       const cmd = (name === "git" || name === "docker") ? "bash" : name;
-      onAdd(cmd, [], cwd.trim() || null);
+      setCommand(cmd);
     }
   };
 
@@ -65,14 +65,8 @@ export default function AddFriend({ onAdd, onClose }) {
   };
 
   const selectDir = (dir) => {
-    if (command === "__folder__") {
-      // 文件夹模式：直接打开文件夹
-      onAdd("__folder__", [], dir);
-      onClose();
-    } else {
-      setCwd(dir);
-      setShowBrowse(false);
-    }
+    setCwd(dir);
+    setShowBrowse(false);
   };
 
   return (
