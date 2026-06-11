@@ -19,7 +19,9 @@ function saveStore() {
     args: s.args,
     cwd: s.cwd,
     label: s.label,
+    type: s.type || (s.command === "__folder__" ? "folder" : "terminal"),
     alive: s.alive,
+    explorerState: s.explorerState || null,
   }));
   writeFileSync(STORE_FILE, JSON.stringify(data, null, 2));
 }
@@ -71,6 +73,28 @@ function attachBuffer(session) {
 
 export function createSession(command, args = [], options = {}) {
   const id = options.id || randomUUID();
+
+  // 文件夹类型会话
+  if (command === "__folder__") {
+    const folderName = options.cwd?.split("/").pop() || "文件夹";
+    const session = {
+      id,
+      command: "__folder__",
+      args: [],
+      cwd: options.cwd || process.env.HOME,
+      label: folderName,
+      type: "folder",
+      pty: null,
+      buffer: createBuffer(),
+      createdAt: Date.now(),
+      alive: true,
+      explorerState: null,
+    };
+    sessions.set(id, session);
+    saveStore();
+    return session;
+  }
+
   let shell;
   try {
     shell = pty.spawn(command, args, {
@@ -87,6 +111,7 @@ export function createSession(command, args = [], options = {}) {
       args,
       cwd: options.cwd || process.env.HOME,
       label: options.label || command,
+      type: "terminal",
       pty: null,
       buffer: createBuffer(),
       createdAt: Date.now(),
@@ -103,6 +128,7 @@ export function createSession(command, args = [], options = {}) {
     args,
     cwd: options.cwd || process.env.HOME,
     label: options.label || command,
+    type: "terminal",
     pty: shell,
     buffer: createBuffer(),
     createdAt: Date.now(),
@@ -132,7 +158,10 @@ export function getSessionBuffer(id) {
 }
 
 export function getAllSessions() {
-  return [...sessions.values()].map(({ pty, buffer, ...rest }) => rest);
+  return [...sessions.values()].map(({ pty, buffer, ...rest }) => ({
+    ...rest,
+    type: rest.type || (rest.command === "__folder__" ? "folder" : "terminal"),
+  }));
 }
 
 export function writeToSession(id, data) {
@@ -168,17 +197,48 @@ export function renameSession(id, label) {
   }
 }
 
+export function updateSessionState(id, state) {
+  const session = sessions.get(id);
+  if (session) {
+    session.explorerState = state;
+    saveStore();
+  }
+}
+
 // 服务启动时恢复（只恢复元数据，不启动 PTY）
 export function restoreSessions() {
   const saved = loadStore();
   for (const meta of saved) {
     if (sessions.has(meta.id)) continue;
+
+    // 文件夹类型会话
+    if (meta.type === "folder" || meta.command === "__folder__") {
+      const folderName = meta.cwd?.split("/").pop() || "文件夹";
+      const session = {
+        id: meta.id,
+        command: "__folder__",
+        args: [],
+        cwd: meta.cwd,
+        label: folderName,
+        type: "folder",
+        pty: null,
+        buffer: createBuffer(),
+        createdAt: meta.createdAt || Date.now(),
+        alive: true,
+        explorerState: meta.explorerState || null,
+      };
+      sessions.set(meta.id, session);
+      console.log(`  恢复文件夹: ${folderName} (${meta.cwd})`);
+      continue;
+    }
+
     const session = {
       id: meta.id,
       command: meta.command,
       args: meta.args || [],
       cwd: meta.cwd,
       label: meta.label || meta.command,
+      type: "terminal",
       pty: null,
       buffer: createBuffer(),
       createdAt: Date.now(),

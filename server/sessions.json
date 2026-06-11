@@ -1,18 +1,23 @@
 [
   {
-    "id": "b74d93d5-bbcc-4cb7-bf1f-e01534e63a9f",
-    "command": "bash",
+    "id": "18df2277-286a-49d2-98d6-d3775d522975",
+    "command": "__folder__",
     "args": [],
     "cwd": "/home/huangxuan/code",
-    "label": "bash",
-    "alive": true
-  },
-  {
-    "id": "6418ad25-14a2-4ddf-9902-d32ed8ee9a42",
-    "command": "bash",
-    "args": [],
-    "cwd": "/home/huangxuan",
-    "label": "bash",
-    "alive": true
+    "label": "code",
+    "type": "folder",
+    "alive": true,
+    "explorerState": {
+      "currentPath": "/home/huangxuan/code/audiobook/app/public",
+      "history": [
+        "/home/huangxuan/code",
+        "/home/huangxuan/code/audiobook",
+        "/home/huangxuan/code/audiobook/app",
+        "/home/huangxuan/code/audiobook/app/dist",
+        "/home/huangxuan/code/audiobook/app",
+        "/home/huangxuan/code/audiobook/app/public"
+      ],
+      "historyIndex": 5
+    }
   }
 ]

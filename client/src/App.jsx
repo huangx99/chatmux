@@ -61,17 +61,34 @@ export default function App() {
     fetch("/api/sessions")
       .then((r) => r.json())
       .then((list) => {
-        const restored = list.map((s) => ({
-          id: s.id,
-          command: s.command,
-          label: s.label || s.command,
-          args: s.args || [],
-          cwd: s.cwd,
-          type: s.type || "terminal",
-          group: groups[s.id] || "",
-          alive: s.alive,
-          ws: null,
-        }));
+        const restored = list.map((s) => {
+          // 文件夹类型
+          if (s.type === "folder" || s.command === "__folder__") {
+            return {
+              id: s.id,
+              command: "__folder__",
+              label: s.label || s.cwd?.split("/").pop() || "文件夹",
+              args: [],
+              cwd: s.cwd,
+              type: "folder",
+              group: groups[s.id] || "",
+              alive: true,
+              ws: null,
+            };
+          }
+          // 终端类型
+          return {
+            id: s.id,
+            command: s.command,
+            label: s.label || s.command,
+            args: s.args || [],
+            cwd: s.cwd,
+            type: "terminal",
+            group: groups[s.id] || "",
+            alive: s.alive,
+            ws: null,
+          };
+        });
         setSessions(restored);
         if (restored.length > 0) {
           const firstId = restored[0].id;

@@ -1,13 +1,24 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 
-export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onOpenFile, onClose }) {
+export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
   const [currentPath, setCurrentPath] = useState(initialPath || "~");
   const [entries, setEntries] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [history, setHistory] = useState([initialPath || "~"]);
   const [historyIndex, setHistoryIndex] = useState(0);
-  const [selectedFile, setSelectedFile] = useState(null);
+  const [selectedFiles, setSelectedFiles] = useState(new Set());
+  const [clipboard, setClipboard] = useState([]);
+  const [transfers, setTransfers] = useState([]);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [renamingFile, setRenamingFile] = useState(null);
+  const [newName, setNewName] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [showNewFolder, setShowNewFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState("");
+
+  const fileInputRef = useRef(null);
+  const containerRef = useRef(null);
 
   // 保存状态到服务器
   const saveState = useCallback(async (path, hist, idx) => {
@@ -32,7 +43,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const loadDir = useCallback(async (dirPath, addToHistory = true) => {
     setLoading(true);
     setError(null);
-    setSelectedFile(null);
+    setSelectedFiles(new Set());
     try {
       const res = await fetch(`/api/ls?path=${encodeURIComponent(dirPath)}`);
       const data = await res.json();
@@ -43,7 +54,6 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
         setCurrentPath(data.path);
         setEntries(data.entries || []);
 
-        // 更新历史记录
         if (addToHistory) {
           const newHistory = [...history.slice(0, historyIndex + 1), data.path];
           const newIndex = newHistory.length - 1;
@@ -60,7 +70,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     }
   }, [history, historyIndex, saveState]);
 
-  // 初始化 - 从服务器恢复状态或加载初始路径
+  // 初始化
   useEffect(() => {
     const loadSavedState = async () => {
       try {
@@ -80,7 +90,33 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
       }
     };
     loadSavedState();
+    loadClipboard();
+    loadTransfers();
   }, [sessionId]);
+
+  // 加载剪贴板状态
+  const loadClipboard = async () => {
+    try {
+      const res = await fetch("/api/clipboard");
+      const data = await res.json();
+      setClipboard(data);
+    } catch {}
+  };
+
+  // 加载传输任务
+  const loadTransfers = async () => {
+    try {
+      const res = await fetch("/api/transfers");
+      const data = await res.json();
+      setTransfers(data.filter(t => t.status !== "completed"));
+    } catch {}
+  };
+
+  // 定期刷新传输进度
+  useEffect(() => {
+    const interval = setInterval(loadTransfers, 1000);
+    return () => clearInterval(interval);
+  }, []);
 
   // 进入子目录
   const enterDir = (dirName) => {
@@ -123,26 +159,251 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   // 刷新
   const refresh = () => {
     loadDir(currentPath, false);
+    loadClipboard();
+    loadTransfers();
   };
 
-  // 在终端中打开当前目录
+  // 在终端中打开
   const openInTerminal = () => {
     if (onOpenTerminal) {
       onOpenTerminal(currentPath);
     }
   };
 
-  // 点击文件
-  const handleFileClick = (entry) => {
-    if (entry.isDirectory) {
-      enterDir(entry.name);
-    } else {
-      setSelectedFile(entry);
-      // 预留：未来可以预览文件
-      if (onOpenFile) {
-        onOpenFile(currentPath + "/" + entry.name, entry);
+  // 选择文件
+  const toggleSelect = (fileName, e) => {
+    e.stopPropagation();
+    setSelectedFiles(prev => {
+      const next = new Set(prev);
+      if (e.ctrlKey || e.metaKey) {
+        if (next.has(fileName)) {
+          next.delete(fileName);
+        } else {
+          next.add(fileName);
+        }
+      } else {
+        next.clear();
+        next.add(fileName);
       }
+      return next;
+    });
+  };
+
+  // 全选
+  const selectAll = () => {
+    setSelectedFiles(new Set(entries.map(e => e.name)));
+  };
+
+  // 取消选择
+  const deselectAll = () => {
+    setSelectedFiles(new Set());
+  };
+
+  // 复制文件
+  const copyFiles = async () => {
+    const files = [...selectedFiles].map(name => ({
+      path: currentPath + "/" + name,
+      name,
+    }));
+    try {
+      await fetch("/api/clipboard/copy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      loadClipboard();
+      deselectAll();
+    } catch (e) {
+      alert("复制失败: " + e.message);
     }
+  };
+
+  // 剪切文件
+  const cutFiles = async () => {
+    const files = [...selectedFiles].map(name => ({
+      path: currentPath + "/" + name,
+      name,
+    }));
+    try {
+      await fetch("/api/clipboard/cut", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      loadClipboard();
+      deselectAll();
+    } catch (e) {
+      alert("剪切失败: " + e.message);
+    }
+  };
+
+  // 粘贴文件
+  const pasteFiles = async () => {
+    try {
+      const res = await fetch("/api/clipboard/paste", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ targetDir: currentPath }),
+      });
+      const results = await res.json();
+      const failed = results.filter(r => !r.success);
+      if (failed.length > 0) {
+        alert("部分文件粘贴失败:\n" + failed.map(f => f.from + ": " + f.error).join("\n"));
+      }
+      refresh();
+    } catch (e) {
+      alert("粘贴失败: " + e.message);
+    }
+  };
+
+  // 删除文件
+  const deleteSelected = async () => {
+    if (selectedFiles.size === 0) return;
+    if (!confirm(`确定删除选中的 ${selectedFiles.size} 个项目吗？`)) return;
+
+    const files = [...selectedFiles].map(name => currentPath + "/" + name);
+    try {
+      await fetch("/api/files", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files }),
+      });
+      refresh();
+    } catch (e) {
+      alert("删除失败: " + e.message);
+    }
+  };
+
+  // 重命名
+  const startRename = (fileName) => {
+    setRenamingFile(fileName);
+    setNewName(fileName);
+    setContextMenu(null);
+  };
+
+  const confirmRename = async () => {
+    if (!newName.trim() || newName === renamingFile) {
+      setRenamingFile(null);
+      return;
+    }
+    try {
+      await fetch("/api/files/rename", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          oldPath: currentPath + "/" + renamingFile,
+          newName: newName.trim(),
+        }),
+      });
+      setRenamingFile(null);
+      refresh();
+    } catch (e) {
+      alert("重命名失败: " + e.message);
+    }
+  };
+
+  // 创建新文件夹
+  const createNewFolder = async () => {
+    if (!newFolderName.trim()) {
+      setShowNewFolder(false);
+      return;
+    }
+    try {
+      await fetch("/api/files/mkdir", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          path: currentPath,
+          name: newFolderName.trim(),
+        }),
+      });
+      setShowNewFolder(false);
+      setNewFolderName("");
+      refresh();
+    } catch (e) {
+      alert("创建文件夹失败: " + e.message);
+    }
+  };
+
+  // 上传文件
+  const handleUpload = async (files) => {
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
+    try {
+      const res = await fetch(`/api/upload?path=${encodeURIComponent(currentPath)}`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (data.success) {
+        refresh();
+      }
+    } catch (e) {
+      alert("上传失败: " + e.message);
+    }
+  };
+
+  // 下载文件
+  const downloadFile = (fileName) => {
+    const filePath = currentPath + "/" + fileName;
+    window.open(`/api/download-file?path=${encodeURIComponent(filePath)}`, "_blank");
+  };
+
+  // 拖拽上传处理
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === containerRef.current) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      handleUpload(files);
+    }
+  };
+
+  // 点击空白区域取消选择
+  const handleBackgroundClick = (e) => {
+    if (e.target === e.currentTarget) {
+      deselectAll();
+    }
+    setContextMenu(null);
+  };
+
+  // 右键菜单
+  const handleContextMenu = (e, fileName = null) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (fileName && !selectedFiles.has(fileName)) {
+      setSelectedFiles(new Set([fileName]));
+    }
+
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      fileName,
+    });
   };
 
   // 格式化文件大小
@@ -171,28 +432,32 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     return iconMap[ext] || "📄";
   };
 
-  // 获取文件类型描述
-  const getFileType = (name, isDirectory) => {
-    if (isDirectory) return "文件夹";
-    const ext = name.split(".").pop()?.toLowerCase();
-    const typeMap = {
-      js: "JavaScript", jsx: "React JSX", ts: "TypeScript", tsx: "React TSX",
-      py: "Python", rb: "Ruby", go: "Go", rs: "Rust",
-      html: "HTML", css: "CSS", json: "JSON", md: "Markdown",
-      txt: "文本", log: "日志", yml: "YAML", yaml: "YAML",
-      sh: "Shell", bash: "Bash",
-      jpg: "图片", jpeg: "图片", png: "图片", gif: "图片", svg: "SVG",
-      mp3: "音频", wav: "音频", mp4: "视频", avi: "视频",
-      zip: "压缩包", tar: "压缩包", gz: "压缩包", rar: "压缩包",
-    };
-    return typeMap[ext] || "文件";
-  };
-
   const canGoBack = historyIndex > 0;
   const canGoForward = historyIndex < history.length - 1;
+  const hasClipboard = clipboard.length > 0;
 
   return (
-    <div style={styles.container}>
+    <div
+      ref={containerRef}
+      style={{
+        ...styles.container,
+        ...(isDragging ? styles.dragging : {}),
+      }}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+      onClick={handleBackgroundClick}
+      onContextMenu={(e) => handleContextMenu(e)}
+    >
+      {/* 拖拽遮罩 */}
+      {isDragging && (
+        <div style={styles.dropOverlay}>
+          <div style={styles.dropIcon}>📥</div>
+          <div style={styles.dropText}>拖放文件到此处上传</div>
+        </div>
+      )}
+
       {/* 工具栏 */}
       <div style={styles.toolbar}>
         <div style={styles.toolbarLeft}>
@@ -220,18 +485,32 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
           </button>
         </div>
 
-        {/* 路径栏 */}
         <div style={styles.pathBar}>
           <span style={styles.pathIcon}>📍</span>
           <span style={styles.pathText}>{currentPath}</span>
         </div>
 
         <div style={styles.toolbarRight}>
+          <button style={styles.actionBtn} onClick={() => setShowNewFolder(true)} title="新建文件夹">
+            📁+
+          </button>
+          <button style={styles.actionBtn} onClick={() => fileInputRef.current?.click()} title="上传文件">
+            📤
+          </button>
           <button style={styles.terminalBtn} onClick={openInTerminal} title="在终端中打开">
-            💻 终端
+            💻
           </button>
         </div>
       </div>
+
+      {/* 隐藏的文件输入 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        style={{ display: "none" }}
+        onChange={(e) => handleUpload(e.target.files)}
+      />
 
       {/* 内容区域 */}
       <div style={styles.content}>
@@ -249,22 +528,50 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
           <div style={styles.centerMessage}>
             <span style={styles.emptyIcon}>📂</span>
             <span>空文件夹</span>
+            <button style={styles.uploadBtn} onClick={() => fileInputRef.current?.click()}>
+              上传文件
+            </button>
           </div>
         ) : (
           <div style={styles.fileList}>
             {/* 表头 */}
             <div style={styles.tableHeader}>
-              <span style={styles.colIcon}></span>
+              <span style={styles.colCheckbox}>
+                <input
+                  type="checkbox"
+                  checked={selectedFiles.size === entries.length && entries.length > 0}
+                  onChange={(e) => e.target.checked ? selectAll() : deselectAll()}
+                />
+              </span>
               <span style={styles.colName}>名称</span>
-              <span style={styles.colType}>类型</span>
               <span style={styles.colSize}>大小</span>
             </div>
 
+            {/* 新建文件夹输入框 */}
+            {showNewFolder && (
+              <div style={styles.fileRow}>
+                <span style={styles.colCheckbox}></span>
+                <span style={styles.fileIcon}>📁</span>
+                <input
+                  style={styles.newFolderInput}
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") createNewFolder();
+                    if (e.key === "Escape") setShowNewFolder(false);
+                  }}
+                  onBlur={createNewFolder}
+                  placeholder="新建文件夹名称"
+                  autoFocus
+                />
+              </div>
+            )}
+
             {/* 返回上级目录 */}
             <div style={styles.fileRow} onClick={goUp}>
+              <span style={styles.colCheckbox}></span>
               <span style={styles.fileIcon}>📁</span>
               <span style={styles.fileName}>..</span>
-              <span style={styles.fileType}>上级目录</span>
               <span style={styles.fileSize}>-</span>
             </div>
 
@@ -274,18 +581,43 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                 key={entry.name}
                 style={{
                   ...styles.fileRow,
-                  ...(selectedFile?.name === entry.name ? styles.fileRowSelected : {}),
+                  ...(selectedFiles.has(entry.name) ? styles.fileRowSelected : {}),
                 }}
-                onClick={() => handleFileClick(entry)}
-                onDoubleClick={() => entry.isDirectory ? enterDir(entry.name) : null}
+                onClick={(e) => {
+                  if (e.detail === 2 && entry.isDirectory) {
+                    enterDir(entry.name);
+                  } else {
+                    toggleSelect(entry.name, e);
+                  }
+                }}
+                onContextMenu={(e) => handleContextMenu(e, entry.name)}
               >
+                <span style={styles.colCheckbox}>
+                  <input
+                    type="checkbox"
+                    checked={selectedFiles.has(entry.name)}
+                    onChange={() => {}}
+                  />
+                </span>
                 <span style={styles.fileIcon}>
                   {getIcon(entry.name, entry.isDirectory)}
                 </span>
-                <span style={styles.fileName}>{entry.name}</span>
-                <span style={styles.fileType}>
-                  {getFileType(entry.name, entry.isDirectory)}
-                </span>
+                {renamingFile === entry.name ? (
+                  <input
+                    style={styles.renameInput}
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") confirmRename();
+                      if (e.key === "Escape") setRenamingFile(null);
+                    }}
+                    onBlur={confirmRename}
+                    autoFocus
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <span style={styles.fileName}>{entry.name}</span>
+                )}
                 <span style={styles.fileSize}>
                   {entry.isDirectory ? "-" : formatSize(entry.size)}
                 </span>
@@ -299,15 +631,123 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
       <div style={styles.footer}>
         <span style={styles.footerText}>
           {loading ? "加载中..." : (
-            `${entries.filter(e => e.isDirectory).length} 个文件夹，${entries.filter(e => !e.isDirectory).length} 个文件`
+            <>
+              {entries.filter(e => e.isDirectory).length} 个文件夹，{entries.filter(e => !e.isDirectory).length} 个文件
+              {selectedFiles.size > 0 && ` | 已选择 ${selectedFiles.size} 项`}
+              {hasClipboard && ` | 剪贴板 ${clipboard.length} 项`}
+            </>
           )}
         </span>
-        {selectedFile && (
-          <span style={styles.footerSelected}>
-            已选择: {selectedFile.name}
-          </span>
-        )}
       </div>
+
+      {/* 传输进度 */}
+      {transfers.length > 0 && (
+        <div style={styles.transferBar}>
+          {transfers.map(task => (
+            <div key={task.id} style={styles.transferItem}>
+              <span style={styles.transferIcon}>
+                {task.type === "upload" ? "📤" : "📥"}
+              </span>
+              <span style={styles.transferName}>{task.fileName}</span>
+              <div style={styles.progressBar}>
+                <div
+                  style={{
+                    ...styles.progressFill,
+                    width: `${(task.transferred / task.totalSize) * 100}%`,
+                  }}
+                />
+              </div>
+              <span style={styles.transferSize}>
+                {formatSize(task.transferred)} / {formatSize(task.totalSize)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* 右键菜单 */}
+      {contextMenu && (
+        <div
+          style={{
+            ...styles.contextMenu,
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {contextMenu.fileName ? (
+            <>
+              <button style={styles.menuItem} onClick={() => {
+                copyFiles();
+                setContextMenu(null);
+              }}>
+                📋 复制
+              </button>
+              <button style={styles.menuItem} onClick={() => {
+                cutFiles();
+                setContextMenu(null);
+              }}>
+                ✂️ 剪切
+              </button>
+              <button style={styles.menuItem} onClick={() => {
+                downloadFile(contextMenu.fileName);
+                setContextMenu(null);
+              }}>
+                📥 下载
+              </button>
+              <div style={styles.menuDivider} />
+              <button style={styles.menuItem} onClick={() => {
+                startRename(contextMenu.fileName);
+                setContextMenu(null);
+              }}>
+                ✏️ 重命名
+              </button>
+              <button style={{ ...styles.menuItem, color: "#f85149" }} onClick={() => {
+                deleteSelected();
+                setContextMenu(null);
+              }}>
+                🗑️ 删除
+              </button>
+            </>
+          ) : (
+            <>
+              {hasClipboard && (
+                <button style={styles.menuItem} onClick={() => {
+                  pasteFiles();
+                  setContextMenu(null);
+                }}>
+                  📋 粘贴
+                </button>
+              )}
+              <button style={styles.menuItem} onClick={() => {
+                setShowNewFolder(true);
+                setContextMenu(null);
+              }}>
+                📁 新建文件夹
+              </button>
+              <button style={styles.menuItem} onClick={() => {
+                fileInputRef.current?.click();
+                setContextMenu(null);
+              }}>
+                📤 上传文件
+              </button>
+              <div style={styles.menuDivider} />
+              <button style={styles.menuItem} onClick={() => {
+                selectAll();
+                setContextMenu(null);
+              }}>
+                ✅ 全选
+              </button>
+              <button style={styles.menuItem} onClick={() => {
+                refresh();
+                setContextMenu(null);
+              }}>
+                🔄 刷新
+              </button>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -319,6 +759,31 @@ const styles = {
     height: "100%",
     background: "#0d1117",
     color: "#c9d1d9",
+    position: "relative",
+  },
+  dragging: {
+    outline: "2px dashed #58a6ff",
+    outlineOffset: -2,
+  },
+  dropOverlay: {
+    position: "absolute",
+    inset: 0,
+    background: "rgba(88, 166, 255, 0.1)",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    zIndex: 100,
+    pointerEvents: "none",
+  },
+  dropIcon: {
+    fontSize: 64,
+    marginBottom: 16,
+  },
+  dropText: {
+    fontSize: 18,
+    color: "#58a6ff",
+    fontWeight: 600,
   },
   toolbar: {
     display: "flex",
@@ -346,6 +811,15 @@ const styles = {
     padding: "6px 10px",
     cursor: "pointer",
     fontSize: 14,
+    flexShrink: 0,
+  },
+  actionBtn: {
+    background: "#21262d",
+    border: "1px solid #30363d",
+    borderRadius: 6,
+    padding: "6px 10px",
+    cursor: "pointer",
+    fontSize: 13,
     flexShrink: 0,
   },
   pathBar: {
@@ -410,6 +884,16 @@ const styles = {
     color: "#c9d1d9",
     fontSize: 13,
   },
+  uploadBtn: {
+    background: "#238636",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "8px 16px",
+    cursor: "pointer",
+    fontSize: 13,
+    marginTop: 8,
+  },
   fileList: {
     padding: "4px 0",
   },
@@ -424,11 +908,24 @@ const styles = {
     fontWeight: 500,
     position: "sticky",
     top: 0,
+    zIndex: 10,
   },
-  colIcon: { width: 24, flexShrink: 0 },
-  colName: { flex: 1, minWidth: 0 },
-  colType: { width: 100, flexShrink: 0, textAlign: "right" },
-  colSize: { width: 80, flexShrink: 0, textAlign: "right" },
+  colCheckbox: {
+    width: 32,
+    flexShrink: 0,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  colName: {
+    flex: 1,
+    minWidth: 0,
+  },
+  colSize: {
+    width: 80,
+    flexShrink: 0,
+    textAlign: "right",
+  },
   fileRow: {
     display: "flex",
     alignItems: "center",
@@ -444,6 +941,7 @@ const styles = {
     fontSize: 16,
     flexShrink: 0,
     textAlign: "center",
+    marginRight: 8,
   },
   fileName: {
     flex: 1,
@@ -453,19 +951,32 @@ const styles = {
     whiteSpace: "nowrap",
     minWidth: 0,
   },
-  fileType: {
-    width: 100,
-    fontSize: 12,
-    color: "#8b949e",
-    textAlign: "right",
-    flexShrink: 0,
-  },
   fileSize: {
     width: 80,
     fontSize: 12,
     color: "#8b949e",
     textAlign: "right",
     flexShrink: 0,
+  },
+  renameInput: {
+    flex: 1,
+    background: "#0d1117",
+    border: "1px solid #58a6ff",
+    borderRadius: 4,
+    padding: "4px 8px",
+    color: "#c9d1d9",
+    fontSize: 14,
+    outline: "none",
+  },
+  newFolderInput: {
+    flex: 1,
+    background: "#0d1117",
+    border: "1px solid #58a6ff",
+    borderRadius: 4,
+    padding: "4px 8px",
+    color: "#c9d1d9",
+    fontSize: 14,
+    outline: "none",
   },
   footer: {
     display: "flex",
@@ -479,12 +990,81 @@ const styles = {
     flexShrink: 0,
   },
   footerText: {},
-  footerSelected: {
-    color: "#58a6ff",
+  transferBar: {
+    padding: "8px 16px",
+    background: "#161b22",
+    borderTop: "1px solid #30363d",
+    maxHeight: 120,
+    overflowY: "auto",
+    flexShrink: 0,
+  },
+  transferItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "4px 0",
+    fontSize: 12,
+  },
+  transferIcon: {
+    fontSize: 14,
+    flexShrink: 0,
+  },
+  transferName: {
+    flex: 1,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    minWidth: 0,
+  },
+  progressBar: {
+    width: 100,
+    height: 4,
+    background: "#21262d",
+    borderRadius: 2,
+    overflow: "hidden",
+    flexShrink: 0,
+  },
+  progressFill: {
+    height: "100%",
+    background: "#58a6ff",
+    transition: "width 0.3s",
+  },
+  transferSize: {
+    fontSize: 11,
+    color: "#8b949e",
+    flexShrink: 0,
+    width: 100,
+    textAlign: "right",
+  },
+  contextMenu: {
+    position: "fixed",
+    background: "#161b22",
+    border: "1px solid #30363d",
+    borderRadius: 8,
+    padding: "4px 0",
+    zIndex: 1000,
+    minWidth: 160,
+    boxShadow: "0 4px 12px rgba(0,0,0,0.3)",
+  },
+  menuItem: {
+    display: "block",
+    width: "100%",
+    padding: "8px 16px",
+    background: "none",
+    border: "none",
+    color: "#c9d1d9",
+    fontSize: 13,
+    cursor: "pointer",
+    textAlign: "left",
+  },
+  menuDivider: {
+    height: 1,
+    background: "#30363d",
+    margin: "4px 0",
   },
 };
 
-// CSS 动画
+// CSS
 const style = document.createElement("style");
 style.textContent = `
   @keyframes spin {
@@ -493,6 +1073,9 @@ style.textContent = `
   }
   .file-row:hover {
     background: rgba(88, 166, 255, 0.1) !important;
+  }
+  input[type="checkbox"] {
+    accent-color: #58a6ff;
   }
 `;
 document.head.appendChild(style);
