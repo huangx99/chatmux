@@ -690,12 +690,14 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
               }}>
                 ✂️ 剪切
               </button>
-              <button style={styles.menuItem} onClick={() => {
-                downloadFile(contextMenu.fileName);
-                setContextMenu(null);
-              }}>
-                📥 下载
-              </button>
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory && (
+                <button style={styles.menuItem} onClick={() => {
+                  downloadFile(contextMenu.fileName);
+                  setContextMenu(null);
+                }}>
+                  📥 下载
+                </button>
+              )}
               <div style={styles.menuDivider} />
               <button style={styles.menuItem} onClick={() => {
                 startRename(contextMenu.fileName);
