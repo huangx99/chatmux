@@ -3,7 +3,7 @@ import { WebSocketServer } from "ws";
 import { createServer } from "http";
 import { fileURLToPath } from "url";
 import { dirname, join, resolve } from "path";
-import { readdir, stat, unlink, rename, copyFile } from "fs/promises";
+import { readdir, stat, unlink, rename, copyFile, readFile, writeFile } from "fs/promises";
 import { createReadStream, existsSync } from "fs";
 import { execSync } from "child_process";
 import os from "os";
@@ -296,6 +296,53 @@ app.post("/api/files/mkdir", async (req, res) => {
     const dirPath = join(expandHome(path), name);
     await mkdir(dirPath, { recursive: true });
     res.json({ success: true, path: dirPath });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// REST: 读取文件内容
+app.get("/api/file-content", async (req, res) => {
+  try {
+    const filePath = expandHome(req.query.path);
+    if (!existsSync(filePath)) {
+      return res.status(404).json({ error: "文件不存在" });
+    }
+
+    const fileStat = await stat(filePath);
+    if (!fileStat.isFile()) {
+      return res.status(400).json({ error: "不是文件" });
+    }
+
+    // 限制文件大小（10MB）
+    if (fileStat.size > 10 * 1024 * 1024) {
+      return res.status(400).json({ error: "文件太大，无法编辑（最大 10MB）" });
+    }
+
+    const content = await readFile(filePath, "utf-8");
+    res.setHeader("Content-Type", "text/plain; charset=utf-8");
+    res.send(content);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// REST: 保存文件内容
+app.put("/api/file-content", async (req, res) => {
+  try {
+    const filePath = expandHome(req.query.path);
+
+    // 收集请求体数据
+    let body = "";
+    req.on("data", chunk => { body += chunk; });
+    req.on("end", async () => {
+      try {
+        await writeFile(filePath, body, "utf-8");
+        res.json({ success: true });
+      } catch (e) {
+        res.status(500).json({ error: e.message });
+      }
+    });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

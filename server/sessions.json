@@ -8,7 +8,7 @@
     "type": "folder",
     "alive": true,
     "explorerState": {
-      "currentPath": "/home/huangxuan/code/audiobook",
+      "currentPath": "/home/huangxuan/code/earth",
       "history": [
         "/home/huangxuan/code",
         "/home/huangxuan/code/audiobook",
@@ -17,9 +17,27 @@
         "/home/huangxuan/code/audiobook/app",
         "/home/huangxuan/code/audiobook/app/public",
         "/home/huangxuan/code/audiobook/app",
-        "/home/huangxuan/code/audiobook"
+        "/home/huangxuan/code/audiobook",
+        "/home/huangxuan/code/audiobook/app",
+        "/home/huangxuan/code/audiobook",
+        "/home/huangxuan/code",
+        "/home/huangxuan/code/guashu",
+        "/home/huangxuan/code",
+        "/home/huangxuan",
+        "/home/huangxuan/code",
+        "/home/huangxuan/code/earth"
       ],
-      "historyIndex": 7
+      "historyIndex": 15
     }
+  },
+  {
+    "id": "3ddde6f0-bbd8-4c6e-a13a-888799c65046",
+    "command": "bash",
+    "args": [],
+    "cwd": "/home/huangxuan",
+    "label": "bash",
+    "type": "terminal",
+    "alive": false,
+    "explorerState": null
   }
 ]
