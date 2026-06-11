@@ -3,9 +3,12 @@ import { WebSocketServer } from "ws";
 import { createServer } from "http";
 import { fileURLToPath } from "url";
 import { dirname, join, resolve } from "path";
-import { readdir, stat, unlink, rename, copyFile, readFile, writeFile } from "fs/promises";
+import { readdir, stat, unlink, rename, copyFile, readFile, writeFile, mkdir } from "fs/promises";
 import { createReadStream, existsSync } from "fs";
-import { execSync } from "child_process";
+import { execSync, exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
 import os from "os";
 import multer from "multer";
 import {
@@ -296,6 +299,173 @@ app.post("/api/files/mkdir", async (req, res) => {
     const dirPath = join(expandHome(path), name);
     await mkdir(dirPath, { recursive: true });
     res.json({ success: true, path: dirPath });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// REST: 压缩文件
+app.post("/api/files/compress", async (req, res) => {
+  try {
+    const { files, format = "zip", outputPath } = req.body;
+
+    if (!files || !Array.isArray(files) || files.length === 0) {
+      return res.status(400).json({ error: "请选择要压缩的文件" });
+    }
+
+    const sourceFiles = files.map(f => expandHome(f));
+    const output = expandHome(outputPath);
+
+    // 确保输出目录存在
+    const outputDir = output.substring(0, output.lastIndexOf("/"));
+    await mkdir(outputDir, { recursive: true });
+
+    let command;
+    if (format === "zip") {
+      command = `cd "${sourceFiles[0].substring(0, sourceFiles[0].lastIndexOf("/"))}" && zip -r "${output}" ${sourceFiles.map(f => `"${f.substring(f.lastIndexOf("/") + 1)}"`).join(" ")}`;
+    } else if (format === "tar.gz") {
+      command = `tar -czf "${output}" ${sourceFiles.map(f => `"${f}"`).join(" ")}`;
+    } else {
+      return res.status(400).json({ error: "不支持的压缩格式" });
+    }
+
+    await execAsync(command);
+    res.json({ success: true, outputPath: output });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// REST: 解压文件
+app.post("/api/files/extract", async (req, res) => {
+  try {
+    const { filePath, outputPath } = req.body;
+    const source = expandHome(filePath);
+    const output = expandHome(outputPath || source.substring(0, source.lastIndexOf("/")));
+
+    // 确保输出目录存在
+    await mkdir(output, { recursive: true });
+
+    let command;
+    if (source.endsWith(".zip")) {
+      command = `unzip -o "${source}" -d "${output}"`;
+    } else if (source.endsWith(".tar.gz") || source.endsWith(".tgz")) {
+      command = `tar -xzf "${source}" -C "${output}"`;
+    } else if (source.endsWith(".tar")) {
+      command = `tar -xf "${source}" -C "${output}"`;
+    } else if (source.endsWith(".gz")) {
+      command = `gunzip -k "${source}"`;
+    } else {
+      return res.status(400).json({ error: "不支持的压缩格式" });
+    }
+
+    await execAsync(command);
+    res.json({ success: true, outputPath: output });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// REST: 文件搜索
+app.get("/api/search", async (req, res) => {
+  try {
+    const { path, query, type = "name", regex = false, caseSensitive = false } = req.query;
+    const searchPath = expandHome(path || "~");
+
+    if (!query) {
+      return res.json({ results: [] });
+    }
+
+    const results = [];
+    const maxResults = 100;
+
+    async function searchDir(dirPath, depth = 0) {
+      if (depth > 5 || results.length >= maxResults) return; // 限制深度和结果数
+
+      try {
+        const entries = await readdir(dirPath);
+        for (const entry of entries) {
+          if (results.length >= maxResults) break;
+          if (entry.startsWith(".")) continue; // 跳过隐藏文件
+
+          const fullPath = join(dirPath, entry);
+          try {
+            const stat = await stat(fullPath);
+
+            if (type === "name" || type === "both") {
+              // 搜索文件名
+              const nameMatch = regex
+                ? new RegExp(query, caseSensitive ? "" : "i").test(entry)
+                : caseSensitive
+                  ? entry.includes(query)
+                  : entry.toLowerCase().includes(query.toLowerCase());
+
+              if (nameMatch) {
+                results.push({
+                  path: fullPath,
+                  name: entry,
+                  isDirectory: stat.isDirectory(),
+                  size: stat.size,
+                  matchType: "name",
+                });
+              }
+            }
+
+            if ((type === "content" || type === "both") && stat.isFile()) {
+              // 搜索文件内容（只搜索文本文件，限制文件大小）
+              if (stat.size < 1024 * 1024) { // 小于 1MB
+                try {
+                  const content = await readFile(fullPath, "utf-8");
+                  const contentMatch = regex
+                    ? new RegExp(query, caseSensitive ? "" : "i").test(content)
+                    : caseSensitive
+                      ? content.includes(query)
+                      : content.toLowerCase().includes(query.toLowerCase());
+
+                  if (contentMatch) {
+                    // 找到匹配的行
+                    const lines = content.split("\n");
+                    const matchedLines = [];
+                    for (let i = 0; i < lines.length; i++) {
+                      const lineMatch = regex
+                        ? new RegExp(query, caseSensitive ? "" : "i").test(lines[i])
+                        : caseSensitive
+                          ? lines[i].includes(query)
+                          : lines[i].toLowerCase().includes(query.toLowerCase());
+
+                      if (lineMatch) {
+                        matchedLines.push({
+                          lineNumber: i + 1,
+                          content: lines[i].trim().substring(0, 200),
+                        });
+                        if (matchedLines.length >= 3) break; // 最多显示3个匹配行
+                      }
+                    }
+
+                    results.push({
+                      path: fullPath,
+                      name: entry,
+                      isDirectory: false,
+                      size: stat.size,
+                      matchType: "content",
+                      matchedLines,
+                    });
+                  }
+                } catch {}
+              }
+            }
+
+            // 递归搜索子目录
+            if (stat.isDirectory()) {
+              await searchDir(fullPath, depth + 1);
+            }
+          } catch {}
+        }
+      } catch {}
+    }
+
+    await searchDir(searchPath);
+    res.json({ results, total: results.length });
   } catch (e) {
     res.status(500).json({ error: e.message });
   }

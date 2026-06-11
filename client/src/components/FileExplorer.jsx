@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import FileEditor from "./FileEditor";
 import LogViewer from "./LogViewer";
+import FileSearch from "./FileSearch";
+import FileDiff from "./FileDiff";
+import FilePreview from "./FilePreview";
 
 // 判断是否是文本文件（可编辑）
 function isTextFile(fileName) {
@@ -24,6 +27,25 @@ function isLogFile(fileName) {
   return logExtensions.has(ext) || fileName.includes("log");
 }
 
+// 判断是否是可预览文件
+function isPreviewable(fileName) {
+  const previewExts = new Set([
+    "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico",
+    "mp4", "webm", "ogg", "mov", "avi", "mkv",
+    "mp3", "wav", "ogg", "aac", "flac", "m4a",
+    "pdf",
+  ]);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return previewExts.has(ext);
+}
+
+// 判断是否是压缩文件
+function isArchive(fileName) {
+  const archiveExts = new Set(["zip", "tar", "gz", "tgz", "tar.gz", "rar", "7z"]);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return archiveExts.has(ext) || fileName.endsWith(".tar.gz");
+}
+
 export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
   const [currentPath, setCurrentPath] = useState(initialPath || "~");
   const [entries, setEntries] = useState([]);
@@ -42,6 +64,11 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFile, setEditingFile] = useState(null); // { path, name }
   const [viewingLog, setViewingLog] = useState(null); // { path, name }
+  const [showSearch, setShowSearch] = useState(false);
+  const [diffFiles, setDiffFiles] = useState(null); // { file1: {path, name}, file2: {path, name} }
+  const [compareMode, setCompareMode] = useState(false); // 对比模式
+  const [compareFirst, setCompareFirst] = useState(null); // 第一个选中的文件
+  const [previewingFile, setPreviewingFile] = useState(null); // { path, name }
   const [draggingFile, setDraggingFile] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -150,6 +177,18 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     return () => clearInterval(interval);
   }, []);
 
+  // 键盘快捷键
+  useEffect(() => {
+    const handler = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+        e.preventDefault();
+        setShowSearch(true);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
   // 进入子目录
   const enterDir = (dirName) => {
     const newPath = currentPath.endsWith("/")
@@ -178,6 +217,101 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
       ? currentPath + fileName
       : currentPath + "/" + fileName;
     setViewingLog({ path: filePath, name: fileName });
+  };
+
+  // 打开文件预览
+  const openPreview = (fileName) => {
+    const filePath = currentPath.endsWith("/")
+      ? currentPath + fileName
+      : currentPath + "/" + fileName;
+    setPreviewingFile({ path: filePath, name: fileName });
+  };
+
+  // 文件对比
+  const handleCompare = (fileName) => {
+    const filePath = currentPath.endsWith("/")
+      ? currentPath + fileName
+      : currentPath + "/" + fileName;
+
+    if (!compareFirst) {
+      // 第一个文件
+      setCompareFirst({ path: filePath, name: fileName });
+    } else {
+      // 第二个文件，打开对比
+      setDiffFiles({
+        file1: compareFirst,
+        file2: { path: filePath, name: fileName },
+      });
+      setCompareFirst(null);
+      setCompareMode(false);
+    }
+  };
+
+  // 切换对比模式
+  const toggleCompareMode = () => {
+    setCompareMode(!compareMode);
+    setCompareFirst(null);
+  };
+
+  // 压缩文件
+  const compressFiles = async (format = "zip") => {
+    if (selectedFiles.size === 0) {
+      alert("请先选择要压缩的文件");
+      return;
+    }
+
+    const files = [...selectedFiles].map(name =>
+      currentPath.endsWith("/") ? currentPath + name : currentPath + "/" + name
+    );
+
+    const firstFile = [...selectedFiles][0];
+    const defaultName = firstFile.replace(/\.[^/.]+$/, "") + (format === "zip" ? ".zip" : ".tar.gz");
+    const outputPath = currentPath.endsWith("/")
+      ? currentPath + defaultName
+      : currentPath + "/" + defaultName;
+
+    try {
+      const res = await fetch("/api/files/compress", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ files, format, outputPath }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        refresh();
+        alert("压缩完成！");
+      } else {
+        alert("压缩失败: " + data.error);
+      }
+    } catch (e) {
+      alert("压缩失败: " + e.message);
+    }
+  };
+
+  // 解压文件
+  const extractFile = async (fileName) => {
+    const filePath = currentPath.endsWith("/")
+      ? currentPath + fileName
+      : currentPath + "/" + fileName;
+
+    try {
+      const res = await fetch("/api/files/extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ filePath, outputPath: currentPath }),
+      });
+
+      const data = await res.json();
+      if (data.success) {
+        refresh();
+        alert("解压完成！");
+      } else {
+        alert("解压失败: " + data.error);
+      }
+    } catch (e) {
+      alert("解压失败: " + e.message);
+    }
   };
 
   // 后退
@@ -540,6 +674,19 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
         </div>
 
         <div style={styles.toolbarRight}>
+          <button style={styles.actionBtn} onClick={() => setShowSearch(true)} title="搜索文件">
+            🔍
+          </button>
+          <button
+            style={{
+              ...styles.actionBtn,
+              ...(compareMode ? styles.actionBtnActive : {})
+            }}
+            onClick={toggleCompareMode}
+            title={compareMode ? "取消对比" : "文件对比"}
+          >
+            📊
+          </button>
           <button style={styles.actionBtn} onClick={() => setShowNewFolder(true)} title="新建文件夹">
             📁+
           </button>
@@ -583,6 +730,15 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
           </div>
         ) : (
           <div style={styles.fileList}>
+            {/* 对比模式提示 */}
+            {compareMode && (
+              <div style={styles.compareHint}>
+                📊 对比模式：{compareFirst
+                  ? `已选择 "${compareFirst.name}"，请点击第二个文件`
+                  : "请点击第一个文件"
+                }
+              </div>
+            )}
             {/* 表头 */}
             <div style={styles.tableHeader}>
               <span style={styles.colCheckbox}>
@@ -633,11 +789,16 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   ...(selectedFiles.has(entry.name) ? styles.fileRowSelected : {}),
                 }}
                 onClick={(e) => {
-                  if (e.detail === 2) {
+                  if (compareMode && !entry.isDirectory) {
+                    // 对比模式：选择文件进行对比
+                    handleCompare(entry.name);
+                  } else if (e.detail === 2) {
                     if (entry.isDirectory) {
                       enterDir(entry.name);
                     } else if (isLogFile(entry.name)) {
                       openLogViewer(entry.name);
+                    } else if (isPreviewable(entry.name)) {
+                      openPreview(entry.name);
                     } else if (isTextFile(entry.name)) {
                       openFile(entry.name);
                     }
@@ -743,6 +904,52 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
         </div>
       )}
 
+      {/* 文件搜索 */}
+      {showSearch && (
+        <div style={styles.editorOverlay}>
+          <FileSearch
+            searchPath={currentPath}
+            onClose={() => setShowSearch(false)}
+            onOpenFile={(path, name) => {
+              setShowSearch(false);
+              if (isLogFile(name)) {
+                setViewingLog({ path, name });
+              } else if (isTextFile(name)) {
+                setEditingFile({ path, name });
+              }
+            }}
+            onOpenFolder={(path) => {
+              setShowSearch(false);
+              loadDir(path);
+            }}
+          />
+        </div>
+      )}
+
+      {/* 文件对比 */}
+      {diffFiles && (
+        <div style={styles.editorOverlay}>
+          <FileDiff
+            file1Path={diffFiles.file1.path}
+            file1Name={diffFiles.file1.name}
+            file2Path={diffFiles.file2.path}
+            file2Name={diffFiles.file2.name}
+            onClose={() => setDiffFiles(null)}
+          />
+        </div>
+      )}
+
+      {/* 文件预览 */}
+      {previewingFile && (
+        <div style={styles.editorOverlay}>
+          <FilePreview
+            filePath={previewingFile.path}
+            fileName={previewingFile.name}
+            onClose={() => setPreviewingFile(null)}
+          />
+        </div>
+      )}
+
       {/* 右键菜单 */}
       {contextMenu && (
         <div
@@ -792,6 +999,41 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   setContextMenu(null);
                 }}>
                   📊 查看日志
+                </button>
+              )}
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
+               isPreviewable(contextMenu.fileName) && (
+                <button style={styles.menuItem} onClick={() => {
+                  openPreview(contextMenu.fileName);
+                  setContextMenu(null);
+                }}>
+                  👁️ 预览
+                </button>
+              )}
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
+               isArchive(contextMenu.fileName) && (
+                <button style={styles.menuItem} onClick={() => {
+                  extractFile(contextMenu.fileName);
+                  setContextMenu(null);
+                }}>
+                  📦 解压
+                </button>
+              )}
+              <div style={styles.menuDivider} />
+              {selectedFiles.size > 0 && (
+                <button style={styles.menuItem} onClick={() => {
+                  compressFiles("zip");
+                  setContextMenu(null);
+                }}>
+                  📦 压缩为 ZIP
+                </button>
+              )}
+              {selectedFiles.size > 0 && (
+                <button style={styles.menuItem} onClick={() => {
+                  compressFiles("tar.gz");
+                  setContextMenu(null);
+                }}>
+                  📦 压缩为 TAR.GZ
                 </button>
               )}
               <div style={styles.menuDivider} />
@@ -920,6 +1162,18 @@ const styles = {
     cursor: "pointer",
     fontSize: 13,
     flexShrink: 0,
+  },
+  actionBtnActive: {
+    background: "#0e639c",
+    borderColor: "#58a6ff",
+  },
+  compareHint: {
+    padding: "8px 16px",
+    background: "rgba(88,166,255,0.1)",
+    borderBottom: "1px solid #30363d",
+    fontSize: 13,
+    color: "#58a6ff",
+    textAlign: "center",
   },
   pathBar: {
     flex: 1,

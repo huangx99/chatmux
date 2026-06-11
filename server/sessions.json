@@ -8,7 +8,7 @@
     "type": "folder",
     "alive": true,
     "explorerState": {
-      "currentPath": "/home/huangxuan/code/powder",
+      "currentPath": "/home/huangxuan/code/Pathfinder/backend/src/camp",
       "history": [
         "/home/huangxuan/code",
         "/home/huangxuan/code/audiobook",
@@ -37,9 +37,12 @@
         "/home/huangxuan/code",
         "/home/huangxuan",
         "/home/huangxuan/code",
-        "/home/huangxuan/code/powder"
+        "/home/huangxuan/code/Pathfinder",
+        "/home/huangxuan/code/Pathfinder/backend",
+        "/home/huangxuan/code/Pathfinder/backend/src",
+        "/home/huangxuan/code/Pathfinder/backend/src/camp"
       ],
-      "historyIndex": 27
+      "historyIndex": 30
     }
   },
   {

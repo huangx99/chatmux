@@ -5,5 +5,8 @@
     "dev": "concurrently \"cd server && node index.js\" \"cd client && npx vite --host\"",
     "server": "cd server && node index.js",
     "client": "cd client && npx vite --host"
+  },
+  "dependencies": {
+    "diff": "^9.0.0"
   }
 }
