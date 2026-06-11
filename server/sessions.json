@@ -8,16 +8,18 @@
     "type": "folder",
     "alive": true,
     "explorerState": {
-      "currentPath": "/home/huangxuan/code/audiobook/app/public",
+      "currentPath": "/home/huangxuan/code/audiobook",
       "history": [
         "/home/huangxuan/code",
         "/home/huangxuan/code/audiobook",
         "/home/huangxuan/code/audiobook/app",
         "/home/huangxuan/code/audiobook/app/dist",
         "/home/huangxuan/code/audiobook/app",
-        "/home/huangxuan/code/audiobook/app/public"
+        "/home/huangxuan/code/audiobook/app/public",
+        "/home/huangxuan/code/audiobook/app",
+        "/home/huangxuan/code/audiobook"
       ],
-      "historyIndex": 5
+      "historyIndex": 7
     }
   }
 ]

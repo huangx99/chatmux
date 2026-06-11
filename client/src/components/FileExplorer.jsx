@@ -16,6 +16,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const [isDragging, setIsDragging] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [draggingFile, setDraggingFile] = useState(null);
 
   const fileInputRef = useRef(null);
   const containerRef = useRef(null);

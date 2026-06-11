@@ -174,7 +174,7 @@ app.post("/api/upload", upload.array("files"), (req, res) => {
 });
 
 // REST: 文件下载
-app.get("/api/download-file", (req, res) => {
+app.get("/api/download-file", async (req, res) => {
   try {
     const filePath = expandHome(req.query.path);
     if (!existsSync(filePath)) {
@@ -182,11 +182,11 @@ app.get("/api/download-file", (req, res) => {
     }
 
     const fileName = filePath.split("/").pop();
+    const fileStat = await stat(filePath);
+
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
     res.setHeader("Content-Type", "application/octet-stream");
-
-    const stat = require("fs").statSync(filePath);
-    res.setHeader("Content-Length", stat.size);
+    res.setHeader("Content-Length", fileStat.size);
 
     const readStream = createReadStream(filePath);
     readStream.pipe(res);
