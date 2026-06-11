@@ -4,6 +4,7 @@ import LogViewer from "./LogViewer";
 import FileSearch from "./FileSearch";
 import FileDiff from "./FileDiff";
 import FilePreview from "./FilePreview";
+import OfficeViewer from "./OfficeViewer";
 
 // 判断是否是文本文件（可编辑）
 function isTextFile(fileName) {
@@ -46,6 +47,13 @@ function isArchive(fileName) {
   return archiveExts.has(ext) || fileName.endsWith(".tar.gz");
 }
 
+// 判断是否是 Office 文档
+function isOfficeFile(fileName) {
+  const officeExts = new Set(["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"]);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return officeExts.has(ext);
+}
+
 export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
   const [currentPath, setCurrentPath] = useState(initialPath || "~");
   const [entries, setEntries] = useState([]);
@@ -69,6 +77,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const [compareMode, setCompareMode] = useState(false); // 对比模式
   const [compareFirst, setCompareFirst] = useState(null); // 第一个选中的文件
   const [previewingFile, setPreviewingFile] = useState(null); // { path, name }
+  const [viewingOffice, setViewingOffice] = useState(null); // { path, name }
   const [draggingFile, setDraggingFile] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -225,6 +234,14 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
       ? currentPath + fileName
       : currentPath + "/" + fileName;
     setPreviewingFile({ path: filePath, name: fileName });
+  };
+
+  // 打开 Office 文档
+  const openOffice = (fileName) => {
+    const filePath = currentPath.endsWith("/")
+      ? currentPath + fileName
+      : currentPath + "/" + fileName;
+    setViewingOffice({ path: filePath, name: fileName });
   };
 
   // 文件对比
@@ -797,6 +814,8 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                       enterDir(entry.name);
                     } else if (isLogFile(entry.name)) {
                       openLogViewer(entry.name);
+                    } else if (isOfficeFile(entry.name)) {
+                      openOffice(entry.name);
                     } else if (isPreviewable(entry.name)) {
                       openPreview(entry.name);
                     } else if (isTextFile(entry.name)) {
@@ -950,6 +969,17 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
         </div>
       )}
 
+      {/* Office 文档查看 */}
+      {viewingOffice && (
+        <div style={styles.editorOverlay}>
+          <OfficeViewer
+            filePath={viewingOffice.path}
+            fileName={viewingOffice.name}
+            onClose={() => setViewingOffice(null)}
+          />
+        </div>
+      )}
+
       {/* 右键菜单 */}
       {contextMenu && (
         <div
@@ -1008,6 +1038,15 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   setContextMenu(null);
                 }}>
                   👁️ 预览
+                </button>
+              )}
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
+               isOfficeFile(contextMenu.fileName) && (
+                <button style={styles.menuItem} onClick={() => {
+                  openOffice(contextMenu.fileName);
+                  setContextMenu(null);
+                }}>
+                  📄 查看文档
                 </button>
               )}
               {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&

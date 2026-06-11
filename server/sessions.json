@@ -8,7 +8,7 @@
     "type": "folder",
     "alive": true,
     "explorerState": {
-      "currentPath": "/home/huangxuan/code/card-game/server",
+      "currentPath": "/home/huangxuan/build",
       "history": [
         "/home/huangxuan/code",
         "/home/huangxuan/code/audiobook",
@@ -38,9 +38,15 @@
         "/home/huangxuan",
         "/home/huangxuan/code",
         "/home/huangxuan/code/card-game",
-        "/home/huangxuan/code/card-game/server"
+        "/home/huangxuan/code/card-game/server",
+        "/home/huangxuan/code/card-game",
+        "/home/huangxuan/code",
+        "/home/huangxuan",
+        "/home/huangxuan/下载",
+        "/home/huangxuan",
+        "/home/huangxuan/build"
       ],
-      "historyIndex": 28
+      "historyIndex": 34
     }
   },
   {
