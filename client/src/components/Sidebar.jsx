@@ -91,7 +91,7 @@ export default function Sidebar({ sessions, activeId, onSelect, onAdd, onDelete,
                     <div style={styles.itemName}>{s.label || s.command}</div>
                   )}
                   <div style={styles.itemMeta}>
-                    {s.command === "__folder__" ? "文件夹" : (s.alive ? "运行中" : "已退出")}
+                    {s.type === "folder" || s.command === "__folder__" ? "📁 文件夹" : (s.alive ? "🟢 运行中" : "⚪ 已退出")}
                   </div>
                 </div>
                 <div className="actions">

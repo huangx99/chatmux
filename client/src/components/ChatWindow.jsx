@@ -164,10 +164,12 @@ export default function ChatWindow({
 
       {!mobile && (
         <div style={styles.header}>
-          <span style={styles.dot(activeSession.alive)} />
+          <span style={activeSession.type === "folder" || activeSession.command === "__folder__" ? styles.folderDot : styles.dot(activeSession.alive)} />
           <span style={styles.name}>{activeSession.label || activeSession.command}</span>
-          <span style={styles.status}>{activeSession.alive ? "运行中" : "已退出"}</span>
-          {!activeSession.alive && (
+          <span style={styles.status}>
+            {activeSession.type === "folder" || activeSession.command === "__folder__" ? "文件夹" : (activeSession.alive ? "运行中" : "已退出")}
+          </span>
+          {!activeSession.alive && activeSession.type !== "folder" && activeSession.command !== "__folder__" && (
             <button style={styles.reconnectBtn} onClick={() => onReconnect?.(activeSession.id)}>
               🔄 重连
             </button>
@@ -308,6 +310,9 @@ const styles = {
   dot: (alive) => ({
     width: 7, height: 7, borderRadius: "50%", background: alive ? "#4ade80" : "#666",
   }),
+  folderDot: {
+    width: 7, height: 7, borderRadius: "50%", background: "#f0883e",
+  },
   name: { fontWeight: 600, color: "#c9d1d9", fontSize: 13 },
   status: { fontSize: 11, color: "#8b949e", marginLeft: "auto" },
   reconnectBtn: {

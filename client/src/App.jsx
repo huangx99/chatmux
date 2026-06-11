@@ -67,6 +67,7 @@ export default function App() {
           label: s.label || s.command,
           args: s.args || [],
           cwd: s.cwd,
+          type: s.type || "terminal",
           group: groups[s.id] || "",
           alive: s.alive,
           ws: null,
@@ -75,7 +76,11 @@ export default function App() {
         if (restored.length > 0) {
           const firstId = restored[0].id;
           setActiveId(firstId);
-          attachSessionRef.current?.(firstId);
+          // 文件夹类型不需要 attach
+          const firstSession = restored[0];
+          if (firstSession.type !== "folder" && firstSession.command !== "__folder__") {
+            attachSessionRef.current?.(firstId);
+          }
         }
       })
       .catch(() => {});
@@ -127,36 +132,51 @@ export default function App() {
     setActiveId(id);
     setSidebarOpen(false);
     const s = sessions.find((x) => x.id === id);
-    if (s && !wsMapRef.current.has(id)) attachSession(id);
+    // 文件夹类型不需要 attach
+    if (s && !wsMapRef.current.has(id) && s.type !== "folder" && s.command !== "__folder__") {
+      attachSession(id);
+    }
   }, [sessions, attachSession]);
 
   const handleAdd = useCallback((command, args = [], cwd = null) => {
-    // 处理文件夹类型
+    // 处理文件夹类型 - 通过服务器 API 创建以实现多端同步
     if (command === "__folder__") {
       const folderPath = cwd || "~";
-      const folderId = "folder_" + Date.now();
-      const folderName = folderPath.split("/").pop() || "文件夹";
 
-      setOpenFolders((prev) => new Map(prev).set(folderId, {
-        id: folderId,
-        path: folderPath,
-        name: folderName,
-      }));
-
-      setSessions((prev) => [...prev, {
-        id: folderId,
+      // 通过 WebSocket 创建文件夹会话
+      const params = new URLSearchParams({
+        action: "create",
         command: "__folder__",
-        label: folderName,
-        args: [],
+        args: "",
+        cols: "80",
+        rows: "24",
         cwd: folderPath,
-        group: "",
-        alive: true,
-        ws: null,
-      }]);
-      setActiveId(folderId);
-      setShowAdd(false);
-      setShowPalette(false);
-      setSidebarOpen(false);
+      });
+      const ws = new WebSocket(`${WS_BASE()}?${params}`);
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.type === "created") {
+            const folderName = folderPath.split("/").pop() || "文件夹";
+            setSessions((prev) => [...prev, {
+              id: msg.sessionId,
+              command: "__folder__",
+              label: folderName,
+              args: [],
+              cwd: folderPath,
+              group: "",
+              alive: true,
+              ws: null,
+            }]);
+            setActiveId(msg.sessionId);
+            setShowAdd(false);
+            setShowPalette(false);
+            setSidebarOpen(false);
+            ws.close();
+          }
+        } catch {}
+      };
+      ws.onclose = () => {};
       return;
     }
 

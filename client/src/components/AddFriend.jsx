@@ -68,6 +68,7 @@ export default function AddFriend({ onAdd, onClose }) {
     if (command === "__folder__") {
       // 文件夹模式：直接打开文件夹
       onAdd("__folder__", [], dir);
+      onClose();
     } else {
       setCwd(dir);
       setShowBrowse(false);
@@ -77,7 +78,7 @@ export default function AddFriend({ onAdd, onClose }) {
   return (
     <div style={styles.overlay} onClick={onClose}>
       <div style={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <h3 style={styles.title}>添加新好友</h3>
+        <h3 style={styles.title}>添加会话</h3>
 
         <div style={styles.presets}>
           {PRESETS.map((p) => (
@@ -140,11 +141,11 @@ export default function AddFriend({ onAdd, onClose }) {
               <div style={styles.browseList}>
                 {dirs.map((d) => (
                   <div
-                    key={d}
+                    key={d.name}
                     style={styles.browseItem}
-                    onClick={() => browseDir(browsePath + "/" + d)}
+                    onClick={() => d.isDirectory ? browseDir(browsePath + "/" + d.name) : null}
                   >
-                    📂 {d}
+                    {d.isDirectory ? "📂" : "📄"} {d.name}
                   </div>
                 ))}
                 {dirs.length === 0 && (
