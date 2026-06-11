@@ -150,6 +150,9 @@ export default function LogViewer({ filePath, fileName, onClose }) {
   const [stats, setStats] = useState({});
   const [selectedLine, setSelectedLine] = useState(null);
   const [ansiMode, setAnsiMode] = useState("render"); // "render" | "strip" | "raw"
+  const [customFilters, setCustomFilters] = useState([]); // [{id, label, pattern, enabled, color}]
+  const [showFilterPanel, setShowFilterPanel] = useState(false);
+  const [newFilter, setNewFilter] = useState({ label: "", pattern: "", color: "#58a6ff" });
 
   const containerRef = useRef(null);
   const refreshTimerRef = useRef(null);
@@ -243,6 +246,40 @@ export default function LogViewer({ filePath, fileName, onClose }) {
       });
     }
 
+    // 按自定义标签过滤
+    const activeFilters = customFilters.filter(f => f.enabled);
+    if (activeFilters.length > 0) {
+      // 先标记哪些行需要显示
+      const showLineIndices = new Set();
+
+      activeFilters.forEach(filter => {
+        const pattern = filter.isRegex ? new RegExp(filter.pattern, "i") : null;
+
+        lines.forEach((line, index) => {
+          const text = stripAnsi(line.raw);
+          const matches = pattern ? pattern.test(text) : text.toLowerCase().includes(filter.pattern.toLowerCase());
+
+          if (matches) {
+            // 显示匹配的行
+            showLineIndices.add(index);
+
+            // 显示后续的缩进行（多行日志关联）
+            for (let i = index + 1; i < lines.length; i++) {
+              const nextLine = stripAnsi(lines[i].raw);
+              // 如果下一行以空格或制表符开头，认为是同一日志的续行
+              if (nextLine.startsWith(" ") || nextLine.startsWith("\t") || nextLine === "") {
+                showLineIndices.add(i);
+              } else {
+                break;
+              }
+            }
+          }
+        });
+      });
+
+      filtered = filtered.filter(line => showLineIndices.has(line.id));
+    }
+
     setFilteredLines(filtered);
 
     // 统计
@@ -251,7 +288,7 @@ export default function LogViewer({ filePath, fileName, onClose }) {
       newStats[line.level] = (newStats[line.level] || 0) + 1;
     });
     setStats(newStats);
-  }, [lines, enabledLevels, searchQuery, searchCaseSensitive]);
+  }, [lines, enabledLevels, searchQuery, searchCaseSensitive, customFilters]);
 
   // 切换级别
   const toggleLevel = (levelId) => {
@@ -273,6 +310,38 @@ export default function LogViewer({ filePath, fileName, onClose }) {
     } else {
       setEnabledLevels(new Set(levels.map(l => l.id)));
     }
+  };
+
+  // 添加自定义过滤器
+  const addCustomFilter = () => {
+    if (!newFilter.label || !newFilter.pattern) return;
+    const filter = {
+      id: Date.now().toString(),
+      ...newFilter,
+      enabled: true,
+      isRegex: false,
+    };
+    setCustomFilters(prev => [...prev, filter]);
+    setNewFilter({ label: "", pattern: "", color: "#58a6ff" });
+  };
+
+  // 切换自定义过滤器
+  const toggleCustomFilter = (filterId) => {
+    setCustomFilters(prev => prev.map(f =>
+      f.id === filterId ? { ...f, enabled: !f.enabled } : f
+    ));
+  };
+
+  // 删除自定义过滤器
+  const removeCustomFilter = (filterId) => {
+    setCustomFilters(prev => prev.filter(f => f.id !== filterId));
+  };
+
+  // 切换正则模式
+  const toggleRegexMode = (filterId) => {
+    setCustomFilters(prev => prev.map(f =>
+      f.id === filterId ? { ...f, isRegex: !f.isRegex } : f
+    ));
   };
 
   // 添加自定义级别
@@ -464,7 +533,92 @@ export default function LogViewer({ filePath, fileName, onClose }) {
             {filteredLines.length} 个匹配
           </span>
         )}
+        <button
+          style={{
+            ...styles.toolBtn,
+            ...(customFilters.length > 0 ? styles.toolBtnActive : {})
+          }}
+          onClick={() => setShowFilterPanel(!showFilterPanel)}
+          title="自定义标签过滤"
+        >
+          🏷️ 标签 {customFilters.length > 0 && `(${customFilters.filter(f => f.enabled).length})`}
+        </button>
       </div>
+
+      {/* 自定义过滤器面板 */}
+      {showFilterPanel && (
+        <div style={styles.filterPanel}>
+          <div style={styles.filterHeader}>
+            <span style={styles.filterTitle}>🏷️ 自定义标签过滤</span>
+            <span style={styles.filterHint}>匹配的行及其续行（缩进行）都会显示</span>
+          </div>
+          <div style={styles.filterList}>
+            {customFilters.map(filter => (
+              <div
+                key={filter.id}
+                style={{
+                  ...styles.filterItem,
+                  opacity: filter.enabled ? 1 : 0.5,
+                }}
+              >
+                <button
+                  style={{
+                    ...styles.filterToggle,
+                    background: filter.enabled ? filter.color : "#21262d",
+                    borderColor: filter.enabled ? filter.color : "#30363d",
+                  }}
+                  onClick={() => toggleCustomFilter(filter.id)}
+                >
+                  {filter.enabled ? "✓" : ""}
+                </button>
+                <span style={{ ...styles.filterLabel, color: filter.color }}>
+                  {filter.label}
+                </span>
+                <code style={styles.filterPattern}>{filter.pattern}</code>
+                <button
+                  style={{
+                    ...styles.filterModeBtn,
+                    ...(filter.isRegex ? styles.filterModeBtnActive : {})
+                  }}
+                  onClick={() => toggleRegexMode(filter.id)}
+                  title={filter.isRegex ? "正则模式" : "文本模式"}
+                >
+                  .*
+                </button>
+                <button
+                  style={styles.removeBtn}
+                  onClick={() => removeCustomFilter(filter.id)}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+          </div>
+          <div style={styles.addFilterForm}>
+            <input
+              style={styles.addFilterInput}
+              placeholder="标签名 (如: Info)"
+              value={newFilter.label}
+              onChange={(e) => setNewFilter(prev => ({ ...prev, label: e.target.value }))}
+            />
+            <input
+              style={styles.addFilterInput}
+              placeholder="匹配内容 (如: info)"
+              value={newFilter.pattern}
+              onChange={(e) => setNewFilter(prev => ({ ...prev, pattern: e.target.value }))}
+            />
+            <input
+              type="color"
+              style={styles.colorInput}
+              value={newFilter.color}
+              onChange={(e) => setNewFilter(prev => ({ ...prev, color: e.target.value }))}
+            />
+            <button style={styles.addBtn} onClick={addCustomFilter}>
+              添加
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* 设置面板 */}
       {showSettings && (
@@ -763,6 +917,99 @@ const styles = {
     padding: "6px 14px",
     cursor: "pointer",
     fontSize: 12,
+  },
+  filterPanel: {
+    padding: "12px 16px",
+    background: "#161b22",
+    borderBottom: "1px solid #30363d",
+    flexShrink: 0,
+  },
+  filterHeader: {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  filterTitle: {
+    fontSize: 13,
+    fontWeight: 600,
+    color: "#c9d1d9",
+  },
+  filterHint: {
+    fontSize: 11,
+    color: "#8b949e",
+  },
+  filterList: {
+    display: "flex",
+    flexDirection: "column",
+    gap: 6,
+    marginBottom: 10,
+  },
+  filterItem: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "6px 10px",
+    background: "#0d1117",
+    borderRadius: 4,
+  },
+  filterToggle: {
+    width: 24,
+    height: 24,
+    border: "2px solid #30363d",
+    borderRadius: 4,
+    cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    color: "#fff",
+    fontSize: 12,
+    fontWeight: 600,
+    flexShrink: 0,
+  },
+  filterLabel: {
+    fontSize: 13,
+    fontWeight: 600,
+    minWidth: 60,
+  },
+  filterPattern: {
+    flex: 1,
+    fontSize: 12,
+    color: "#8b949e",
+    background: "#21262d",
+    padding: "2px 6px",
+    borderRadius: 3,
+    fontFamily: "monospace",
+  },
+  filterModeBtn: {
+    background: "#21262d",
+    border: "1px solid #30363d",
+    borderRadius: 3,
+    padding: "3px 6px",
+    cursor: "pointer",
+    fontSize: 11,
+    color: "#8b949e",
+    fontFamily: "monospace",
+    flexShrink: 0,
+  },
+  filterModeBtnActive: {
+    color: "#58a6ff",
+    borderColor: "#58a6ff",
+    background: "rgba(88,166,255,0.1)",
+  },
+  addFilterForm: {
+    display: "flex",
+    gap: 8,
+  },
+  addFilterInput: {
+    flex: 1,
+    background: "#0d1117",
+    border: "1px solid #30363d",
+    borderRadius: 4,
+    padding: "6px 10px",
+    color: "#c9d1d9",
+    fontSize: 12,
+    outline: "none",
   },
   logContent: {
     flex: 1,
