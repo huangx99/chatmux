@@ -242,11 +242,24 @@ function TerminalPanel({ session, isActive, onCreate }) {
   const initialized = useRef(false);
 
   useEffect(() => {
+    // 当容器存在且终端未初始化时，创建终端
     if (containerRef.current && !initialized.current) {
       initialized.current = true;
       onCreate(session, containerRef.current);
     }
-  }, [session.id]);
+
+    // 当容器被清空时（比如被清理逻辑删除），重新初始化
+    if (containerRef.current && initialized.current && !containerRef.current.hasChildNodes()) {
+      initialized.current = false;
+      // 延迟重新创建，确保 DOM 已更新
+      requestAnimationFrame(() => {
+        if (containerRef.current) {
+          initialized.current = true;
+          onCreate(session, containerRef.current);
+        }
+      });
+    }
+  }, [session.id, onCreate]);
 
   const focusTerminal = () => {
     const textarea = containerRef.current?.querySelector("textarea");
