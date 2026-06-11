@@ -272,48 +272,137 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
 
 // 简单的 Markdown 转 HTML
 function simpleMarkdown(md) {
-  let html = md
-    // 标题
-    .replace(/^### (.*$)/gm, "<h3>$1</h3>")
-    .replace(/^## (.*$)/gm, "<h2>$1</h2>")
-    .replace(/^# (.*$)/gm, "<h1>$1</h1>")
-    // 粗体和斜体
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.*?)\*/g, "<em>$1</em>")
-    // 链接和图片
-    .replace(/!\[(.*?)\]\((.*?)\)/g, '<img alt="$1" src="$2" style="max-width:100%">')
-    .replace(/\[(.*?)\]\((.*?)\)/g, '<a href="$2" target="_blank">$1</a>')
-    // 代码块
-    .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code class="language-$1">$2</code></pre>')
-    .replace(/`(.*?)`/g, "<code>$1</code>")
-    // 列表
-    .replace(/^\s*[-*]\s+(.*$)/gm, "<li>$1</li>")
-    .replace(/^\s*\d+\.\s+(.*$)/gm, "<li>$1</li>")
-    // 引用
-    .replace(/^>\s+(.*$)/gm, "<blockquote>$1</blockquote>")
-    // 水平线
-    .replace(/^---$/gm, "<hr>")
-    // 换行
-    .replace(/\n\n/g, "</p><p>")
-    .replace(/\n/g, "<br>");
+  if (!md) return "";
 
-  // 包装列表项
-  html = html.replace(/(<li>.*<\/li>)/gs, "<ul>$1</ul>");
-  // 包装段落
-  html = "<p>" + html + "</p>";
-  // 清理空段落
-  html = html.replace(/<p><\/p>/g, "");
-  html = html.replace(/<p>(<h[1-6]>)/g, "$1");
-  html = html.replace(/(<\/h[1-6]>)<\/p>/g, "$1");
-  html = html.replace(/<p>(<ul>)/g, "$1");
-  html = html.replace(/(<\/ul>)<\/p>/g, "$1");
-  html = html.replace(/<p>(<blockquote>)/g, "$1");
-  html = html.replace(/(<\/blockquote>)<\/p>/g, "$1");
-  html = html.replace(/<p>(<pre>)/g, "$1");
-  html = html.replace(/(<\/pre>)<\/p>/g, "$1");
-  html = html.replace(/<p>(<hr>)/g, "$1");
+  let html = md;
 
-  return html;
+  // 转义 HTML 特殊字符（但保留 Markdown 语法）
+  html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+  // 代码块（先处理，避免被其他规则影响）
+  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
+  });
+
+  // 行内代码
+  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
+
+  // 标题
+  html = html.replace(/^######\s+(.*$)/gm, "<h6>$1</h6>");
+  html = html.replace(/^#####\s+(.*$)/gm, "<h5>$1</h5>");
+  html = html.replace(/^####\s+(.*$)/gm, "<h4>$1</h4>");
+  html = html.replace(/^###\s+(.*$)/gm, "<h3>$1</h3>");
+  html = html.replace(/^##\s+(.*$)/gm, "<h2>$1</h2>");
+  html = html.replace(/^#\s+(.*$)/gm, "<h1>$1</h1>");
+
+  // 水平线
+  html = html.replace(/^[-*_]{3,}\s*$/gm, "<hr>");
+
+  // 粗体和斜体
+  html = html.replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>");
+  html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
+  html = html.replace(/___(.*?)___/g, "<strong><em>$1</em></strong>");
+  html = html.replace(/__(.*?)__/g, "<strong>$1</strong>");
+  html = html.replace(/_(.*?)_/g, "<em>$1</em>");
+  html = html.replace(/~~(.*?)~~/g, "<del>$1</del>");
+
+  // 图片
+  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" style="max-width:100%">');
+
+  // 链接
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
+  html = html.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, '<a href="#$2">$1</a>');
+
+  // 引用块
+  html = html.replace(/^&gt;\s+(.*$)/gm, "<blockquote>$1</blockquote>");
+  // 合并连续的引用块
+  html = html.replace(/<\/blockquote>\n<blockquote>/g, "\n");
+
+  // 无序列表
+  html = html.replace(/^[\s]*[-*+]\s+(.*$)/gm, "<li>$1</li>");
+  html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>");
+
+  // 有序列表
+  html = html.replace(/^[\s]*\d+\.\s+(.*$)/gm, "<oli>$1</oli>");
+  html = html.replace(/(<oli>.*<\/oli>)/gs, (match) => {
+    return "<ol>" + match.replace(/<\/?oli>/g, (tag) => tag.replace("oli", "li")) + "</ol>";
+  });
+
+  // 任务列表
+  html = html.replace(/<li>\[x\]\s*/g, '<li><input type="checkbox" checked disabled> ');
+  html = html.replace(/<li>\[ \]\s*/g, '<li><input type="checkbox" disabled> ');
+
+  // 表格
+  html = html.replace(/^(\|.+\|)\n(\|[-:| ]+\|)\n((?:\|.+\|\n?)*)/gm, (match, header, separator, body) => {
+    const headerCells = header.split("|").filter(c => c.trim());
+    const rows = body.trim().split("\n");
+
+    let table = '<table><thead><tr>';
+    headerCells.forEach(cell => {
+      table += `<th>${cell.trim()}</th>`;
+    });
+    table += '</tr></thead><tbody>';
+
+    rows.forEach(row => {
+      const cells = row.split("|").filter(c => c.trim());
+      table += '<tr>';
+      cells.forEach(cell => {
+        table += `<td>${cell.trim()}</td>`;
+      });
+      table += '</tr>';
+    });
+
+    table += '</tbody></table>';
+    return table;
+  });
+
+  // 段落（双换行分隔）
+  const lines = html.split("\n");
+  let result = "";
+  let inParagraph = false;
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const isBlockElement = /^<(h[1-6]|ul|ol|li|pre|blockquote|hr|table|thead|tbody|tr|th|td|div|img)/.test(line);
+    const isClosingBlock = /^<\/(h[1-6]|ul|ol|pre|blockquote|table|thead|tbody|tr|div)>/.test(line);
+    const isEmpty = line.trim() === "";
+
+    if (isBlockElement || isClosingBlock) {
+      if (inParagraph) {
+        result += "</p>";
+        inParagraph = false;
+      }
+      result += line + "\n";
+    } else if (isEmpty) {
+      if (inParagraph) {
+        result += "</p>";
+        inParagraph = false;
+      }
+      result += "\n";
+    } else {
+      if (!inParagraph) {
+        result += "<p>";
+        inParagraph = true;
+      }
+      result += line + "<br>";
+    }
+  }
+
+  if (inParagraph) {
+    result += "</p>";
+  }
+
+  // 清理
+  result = result.replace(/<p><\/p>/g, "");
+  result = result.replace(/<p>(<h[1-6]>)/g, "$1");
+  result = result.replace(/(<\/h[1-6]>)<\/p>/g, "$1");
+  result = result.replace(/<p>(<ul>|<ol>|<pre>|<blockquote>|<hr>|<table>)/g, "$1");
+  result = result.replace(/(<\/ul>|<\/ol>|<\/pre>|<\/blockquote>|<\/table>)<\/p>/g, "$1");
+  result = result.replace(/<br><\/p>/g, "</p>");
+  result = result.replace(/<p><br>/g, "<p>");
+
+  return result;
 }
 
 const styles = {
@@ -436,67 +525,153 @@ const styles = {
 // 添加 Markdown 预览样式
 const mdStyle = document.createElement("style");
 mdStyle.textContent = `
+  .preview {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  }
   .preview h1, .preview h2, .preview h3, .preview h4, .preview h5, .preview h6 {
-    margin-top: 16px;
-    margin-bottom: 8px;
+    margin-top: 24px;
+    margin-bottom: 16px;
     font-weight: 600;
     line-height: 1.25;
+    color: #24292e;
   }
-  .preview h1 { font-size: 2em; border-bottom: 1px solid #eaecef; padding-bottom: 8px; }
-  .preview h2 { font-size: 1.5em; border-bottom: 1px solid #eaecef; padding-bottom: 6px; }
+  .preview h1 {
+    font-size: 2em;
+    border-bottom: 2px solid #eaecef;
+    padding-bottom: 12px;
+    margin-top: 32px;
+  }
+  .preview h2 {
+    font-size: 1.5em;
+    border-bottom: 1px solid #eaecef;
+    padding-bottom: 8px;
+    margin-top: 28px;
+  }
   .preview h3 { font-size: 1.25em; }
-  .preview p { margin: 8px 0; }
-  .preview a { color: #0366d6; text-decoration: none; }
-  .preview a:hover { text-decoration: underline; }
+  .preview h4 { font-size: 1em; }
+  .preview h5 { font-size: 0.875em; }
+  .preview h6 { font-size: 0.85em; color: #6a737d; }
+
+  .preview p {
+    margin: 12px 0;
+    line-height: 1.7;
+  }
+
+  .preview a {
+    color: #0366d6;
+    text-decoration: none;
+  }
+  .preview a:hover {
+    text-decoration: underline;
+  }
+
+  .preview strong { font-weight: 600; }
+  .preview em { font-style: italic; }
+  .preview del { text-decoration: line-through; color: #6a737d; }
+
   .preview code {
-    background: #f6f8fa;
+    background: rgba(27,31,35,0.05);
     padding: 2px 6px;
     border-radius: 3px;
     font-size: 85%;
+    font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
   }
+
   .preview pre {
     background: #f6f8fa;
     padding: 16px;
     border-radius: 6px;
     overflow-x: auto;
+    margin: 16px 0;
+    line-height: 1.45;
   }
   .preview pre code {
     background: none;
     padding: 0;
+    border-radius: 0;
+    font-size: 85%;
   }
+
   .preview blockquote {
-    border-left: 4px solid #dfe2e5;
-    padding: 0 16px;
+    border-left: 4px solid #0366d6;
+    padding: 8px 16px;
     color: #6a737d;
-    margin: 8px 0;
+    margin: 16px 0;
+    background: #f6f8fa;
+    border-radius: 0 6px 6px 0;
   }
+  .preview blockquote p {
+    margin: 4px 0;
+  }
+
   .preview ul, .preview ol {
     padding-left: 2em;
-    margin: 8px 0;
+    margin: 12px 0;
   }
-  .preview li { margin: 4px 0; }
+  .preview li {
+    margin: 6px 0;
+    line-height: 1.6;
+  }
+  .preview ul ul, .preview ol ol, .preview ul ol, .preview ol ul {
+    margin: 4px 0;
+  }
+
+  .preview input[type="checkbox"] {
+    margin-right: 6px;
+  }
+
   .preview hr {
     border: none;
-    border-top: 1px solid #eaecef;
-    margin: 16px 0;
+    border-top: 2px solid #e1e4e8;
+    margin: 24px 0;
   }
+
   .preview img {
     max-width: 100%;
     border-radius: 6px;
+    margin: 8px 0;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
   }
+
   .preview table {
     border-collapse: collapse;
     width: 100%;
-    margin: 8px 0;
+    margin: 16px 0;
+    display: block;
+    overflow-x: auto;
   }
   .preview th, .preview td {
     border: 1px solid #dfe2e5;
-    padding: 8px 12px;
+    padding: 10px 16px;
     text-align: left;
   }
   .preview th {
     background: #f6f8fa;
     font-weight: 600;
+  }
+  .preview tr:nth-child(even) {
+    background: #f6f8fa;
+  }
+  .preview tr:hover {
+    background: #e8f5e9;
+  }
+
+  /* 链接样式 */
+  .preview a:visited {
+    color: #6f42c1;
+  }
+
+  /* 响应式 */
+  @media (max-width: 768px) {
+    .preview {
+      padding: 12px 16px;
+    }
+    .preview h1 { font-size: 1.75em; }
+    .preview h2 { font-size: 1.375em; }
+    .preview pre {
+      padding: 12px;
+      font-size: 13px;
+    }
   }
 `;
 document.head.appendChild(mdStyle);
