@@ -402,11 +402,14 @@ const styles = {
   editorContainer: {
     flex: 1,
     overflow: "hidden",
+    display: "flex",
+    flexDirection: "column",
   },
   preview: {
     flex: 1,
     padding: "20px 40px",
-    overflow: "auto",
+    overflowY: "auto",
+    overflowX: "hidden",
     background: "#fff",
     color: "#333",
     fontSize: 15,
