@@ -31,8 +31,8 @@ export default function FilePreview({ filePath, fileName, onClose }) {
     }
   }, [fileName]);
 
-  // 获取文件 URL
-  const fileUrl = `/api/file-content?path=${encodeURIComponent(filePath)}`;
+  // 获取文件 URL（二进制文件使用 download-file API）
+  const fileUrl = `/api/download-file?path=${encodeURIComponent(filePath)}`;
 
   if (loading) {
     return (

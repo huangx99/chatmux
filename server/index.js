@@ -390,7 +390,7 @@ app.get("/api/search", async (req, res) => {
 
           const fullPath = join(dirPath, entry);
           try {
-            const stat = await stat(fullPath);
+            const fileStat = await stat(fullPath);
 
             if (type === "name" || type === "both") {
               // 搜索文件名
@@ -404,16 +404,16 @@ app.get("/api/search", async (req, res) => {
                 results.push({
                   path: fullPath,
                   name: entry,
-                  isDirectory: stat.isDirectory(),
-                  size: stat.size,
+                  isDirectory: fileStat.isDirectory(),
+                  size: fileStat.size,
                   matchType: "name",
                 });
               }
             }
 
-            if ((type === "content" || type === "both") && stat.isFile()) {
+            if ((type === "content" || type === "both") && fileStat.isFile()) {
               // 搜索文件内容（只搜索文本文件，限制文件大小）
-              if (stat.size < 1024 * 1024) { // 小于 1MB
+              if (fileStat.size < 1024 * 1024) { // 小于 1MB
                 try {
                   const content = await readFile(fullPath, "utf-8");
                   const contentMatch = regex
@@ -446,7 +446,7 @@ app.get("/api/search", async (req, res) => {
                       path: fullPath,
                       name: entry,
                       isDirectory: false,
-                      size: stat.size,
+                      size: fileStat.size,
                       matchType: "content",
                       matchedLines,
                     });
@@ -456,7 +456,7 @@ app.get("/api/search", async (req, res) => {
             }
 
             // 递归搜索子目录
-            if (stat.isDirectory()) {
+            if (fileStat.isDirectory()) {
               await searchDir(fullPath, depth + 1);
             }
           } catch {}
