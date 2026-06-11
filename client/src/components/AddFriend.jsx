@@ -133,6 +133,16 @@ export default function AddFriend({ onAdd, onClose }) {
                 </button>
               </div>
               <div style={styles.browseList}>
+                {/* 返回上级目录 */}
+                <div
+                  style={styles.browseItem}
+                  onClick={() => {
+                    const parentPath = browsePath.split("/").slice(0, -1).join("/") || "/";
+                    browseDir(parentPath);
+                  }}
+                >
+                  📁 ..  <span style={{color: "#8b949e", fontSize: 11}}>上级目录</span>
+                </div>
                 {dirs.map((d) => (
                   <div
                     key={d.name}
