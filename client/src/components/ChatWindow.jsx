@@ -111,7 +111,10 @@ export default function ChatWindow({
         if (entry) {
           try {
             entry.term.dispose();
-            entry.container.remove();
+            // 清空容器内容，但不移除容器本身
+            while (entry.container.firstChild) {
+              entry.container.removeChild(entry.container.firstChild);
+            }
           } catch (e) {
             console.error("清理终端失败:", e);
           }
