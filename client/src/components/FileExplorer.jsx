@@ -1,4 +1,20 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
+import FileEditor from "./FileEditor";
+
+// 判断是否是文本文件（可编辑）
+function isTextFile(fileName) {
+  const textExtensions = new Set([
+    "js", "jsx", "mjs", "ts", "tsx", "py", "rb", "go", "rs", "java",
+    "c", "cpp", "h", "hpp", "cs", "php", "swift", "kt", "scala",
+    "html", "htm", "css", "scss", "less", "json", "xml", "yaml", "yml",
+    "toml", "md", "sql", "sh", "bash", "zsh", "fish", "ps1",
+    "dockerfile", "makefile", "txt", "log", "csv", "ini", "conf", "cfg",
+    "env", "gitignore", "dockerignore", "editorconfig", "prettierrc",
+    "eslintrc", "babelrc",
+  ]);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return textExtensions.has(ext) || !fileName.includes(".");
+}
 
 export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
   const [currentPath, setCurrentPath] = useState(initialPath || "~");
@@ -16,6 +32,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const [isDragging, setIsDragging] = useState(false);
   const [showNewFolder, setShowNewFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
+  const [editingFile, setEditingFile] = useState(null); // { path, name }
   const [draggingFile, setDraggingFile] = useState(null);
 
   const fileInputRef = useRef(null);
@@ -136,6 +153,14 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   const goUp = () => {
     const parentPath = currentPath.split("/").slice(0, -1).join("/") || "/";
     loadDir(parentPath);
+  };
+
+  // 打开文件编辑器
+  const openFile = (fileName) => {
+    const filePath = currentPath.endsWith("/")
+      ? currentPath + fileName
+      : currentPath + "/" + fileName;
+    setEditingFile({ path: filePath, name: fileName });
   };
 
   // 后退
@@ -591,8 +616,12 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   ...(selectedFiles.has(entry.name) ? styles.fileRowSelected : {}),
                 }}
                 onClick={(e) => {
-                  if (e.detail === 2 && entry.isDirectory) {
-                    enterDir(entry.name);
+                  if (e.detail === 2) {
+                    if (entry.isDirectory) {
+                      enterDir(entry.name);
+                    } else if (isTextFile(entry.name)) {
+                      openFile(entry.name);
+                    }
                   } else {
                     toggleSelect(entry.name, e);
                   }
@@ -672,6 +701,18 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
         </div>
       )}
 
+      {/* 文件编辑器 */}
+      {editingFile && (
+        <div style={styles.editorOverlay}>
+          <FileEditor
+            filePath={editingFile.path}
+            fileName={editingFile.name}
+            onClose={() => setEditingFile(null)}
+            onSave={() => refresh()}
+          />
+        </div>
+      )}
+
       {/* 右键菜单 */}
       {contextMenu && (
         <div
@@ -703,6 +744,15 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   setContextMenu(null);
                 }}>
                   📥 下载
+                </button>
+              )}
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
+               isTextFile(contextMenu.fileName) && (
+                <button style={styles.menuItem} onClick={() => {
+                  openFile(contextMenu.fileName);
+                  setContextMenu(null);
+                }}>
+                  ✏️ 编辑
                 </button>
               )}
               <div style={styles.menuDivider} />
@@ -1071,6 +1121,12 @@ const styles = {
     height: 1,
     background: "#30363d",
     margin: "4px 0",
+  },
+  editorOverlay: {
+    position: "absolute",
+    inset: 0,
+    zIndex: 500,
+    background: "#1e1e1e",
   },
 };
 
