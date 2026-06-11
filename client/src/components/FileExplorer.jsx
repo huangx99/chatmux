@@ -51,6 +51,15 @@ export default function FileExplorer({ path, onOpenTerminal, onClose }) {
     }
   };
 
+  // 格式化文件大小
+  const formatSize = (bytes) => {
+    if (bytes === 0) return "0 B";
+    const k = 1024;
+    const sizes = ["B", "KB", "MB", "GB", "TB"];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
+  };
+
   // 获取文件图标
   const getIcon = (name) => {
     const ext = name.split(".").pop()?.toLowerCase();
@@ -121,13 +130,17 @@ export default function FileExplorer({ path, onOpenTerminal, onClose }) {
             {/* 文件和文件夹列表 */}
             {entries.map((entry) => (
               <div
-                key={entry}
+                key={entry.name}
                 style={styles.fileItem}
-                onClick={() => enterDir(entry)}
+                onClick={() => entry.isDirectory ? enterDir(entry.name) : null}
               >
-                <span style={styles.fileIcon}>📂</span>
-                <span style={styles.fileName}>{entry}</span>
-                <span style={styles.fileMeta}>文件夹</span>
+                <span style={styles.fileIcon}>
+                  {entry.isDirectory ? "📂" : getIcon(entry.name)}
+                </span>
+                <span style={styles.fileName}>{entry.name}</span>
+                <span style={styles.fileMeta}>
+                  {entry.isDirectory ? "文件夹" : formatSize(entry.size)}
+                </span>
               </div>
             ))}
           </div>
@@ -137,7 +150,9 @@ export default function FileExplorer({ path, onOpenTerminal, onClose }) {
       {/* 底部状态栏 */}
       <div style={styles.footer}>
         <span style={styles.footerText}>
-          {loading ? "加载中..." : `${entries.length} 个项目`}
+          {loading ? "加载中..." : (
+            `${entries.filter(e => e.isDirectory).length} 个文件夹，${entries.filter(e => !e.isDirectory).length} 个文件`
+          )}
         </span>
         <button style={styles.refreshBtn} onClick={() => loadDir(currentPath)}>
           🔄 刷新
