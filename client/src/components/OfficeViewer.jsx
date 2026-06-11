@@ -3,8 +3,11 @@ import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
-// 设置 PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// 设置 PDF.js worker - 使用本地 worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  "pdfjs-dist/build/pdf.worker.min.mjs",
+  import.meta.url
+).toString();
 
 // 判断文件类型
 function getFileType(fileName) {

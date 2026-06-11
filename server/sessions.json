@@ -8,7 +8,7 @@
     "type": "folder",
     "alive": true,
     "explorerState": {
-      "currentPath": "/home/huangxuan/build",
+      "currentPath": "/home/huangxuan/下载",
       "history": [
         "/home/huangxuan/code",
         "/home/huangxuan/code/audiobook",
@@ -44,9 +44,11 @@
         "/home/huangxuan",
         "/home/huangxuan/下载",
         "/home/huangxuan",
-        "/home/huangxuan/build"
+        "/home/huangxuan/build",
+        "/home/huangxuan",
+        "/home/huangxuan/下载"
       ],
-      "historyIndex": 34
+      "historyIndex": 36
     }
   },
   {
