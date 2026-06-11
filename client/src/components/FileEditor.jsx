@@ -1,5 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Editor from "@monaco-editor/react";
+import { marked } from "marked";
+
+// 配置 marked
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+});
 
 // 文件类型映射
 const LANGUAGE_MAP = {
@@ -236,7 +243,7 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
       {/* 编辑器区域 */}
       <div style={styles.editorContainer}>
         {showPreview && isMd ? (
-          <div style={styles.preview} dangerouslySetInnerHTML={{ __html: simpleMarkdown(content) }} />
+          <div style={styles.preview} dangerouslySetInnerHTML={{ __html: marked.parse(content || "") }} />
         ) : (
           <Editor
             height="100%"
@@ -268,141 +275,6 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
       </div>
     </div>
   );
-}
-
-// 简单的 Markdown 转 HTML
-function simpleMarkdown(md) {
-  if (!md) return "";
-
-  let html = md;
-
-  // 转义 HTML 特殊字符（但保留 Markdown 语法）
-  html = html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-
-  // 代码块（先处理，避免被其他规则影响）
-  html = html.replace(/```(\w*)\n([\s\S]*?)```/g, (match, lang, code) => {
-    return `<pre><code class="language-${lang}">${code.trim()}</code></pre>`;
-  });
-
-  // 行内代码
-  html = html.replace(/`([^`]+)`/g, "<code>$1</code>");
-
-  // 标题
-  html = html.replace(/^######\s+(.*$)/gm, "<h6>$1</h6>");
-  html = html.replace(/^#####\s+(.*$)/gm, "<h5>$1</h5>");
-  html = html.replace(/^####\s+(.*$)/gm, "<h4>$1</h4>");
-  html = html.replace(/^###\s+(.*$)/gm, "<h3>$1</h3>");
-  html = html.replace(/^##\s+(.*$)/gm, "<h2>$1</h2>");
-  html = html.replace(/^#\s+(.*$)/gm, "<h1>$1</h1>");
-
-  // 水平线
-  html = html.replace(/^[-*_]{3,}\s*$/gm, "<hr>");
-
-  // 粗体和斜体
-  html = html.replace(/\*\*\*(.*?)\*\*\*/g, "<strong><em>$1</em></strong>");
-  html = html.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
-  html = html.replace(/\*(.*?)\*/g, "<em>$1</em>");
-  html = html.replace(/___(.*?)___/g, "<strong><em>$1</em></strong>");
-  html = html.replace(/__(.*?)__/g, "<strong>$1</strong>");
-  html = html.replace(/_(.*?)_/g, "<em>$1</em>");
-  html = html.replace(/~~(.*?)~~/g, "<del>$1</del>");
-
-  // 图片
-  html = html.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img alt="$1" src="$2" style="max-width:100%">');
-
-  // 链接
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>');
-  html = html.replace(/\[([^\]]+)\]\[([^\]]*)\]/g, '<a href="#$2">$1</a>');
-
-  // 引用块
-  html = html.replace(/^&gt;\s+(.*$)/gm, "<blockquote>$1</blockquote>");
-  // 合并连续的引用块
-  html = html.replace(/<\/blockquote>\n<blockquote>/g, "\n");
-
-  // 无序列表
-  html = html.replace(/^[\s]*[-*+]\s+(.*$)/gm, "<li>$1</li>");
-  html = html.replace(/(<li>.*<\/li>)/s, "<ul>$1</ul>");
-
-  // 有序列表
-  html = html.replace(/^[\s]*\d+\.\s+(.*$)/gm, "<oli>$1</oli>");
-  html = html.replace(/(<oli>.*<\/oli>)/gs, (match) => {
-    return "<ol>" + match.replace(/<\/?oli>/g, (tag) => tag.replace("oli", "li")) + "</ol>";
-  });
-
-  // 任务列表
-  html = html.replace(/<li>\[x\]\s*/g, '<li><input type="checkbox" checked disabled> ');
-  html = html.replace(/<li>\[ \]\s*/g, '<li><input type="checkbox" disabled> ');
-
-  // 表格
-  html = html.replace(/^(\|.+\|)\n(\|[-:| ]+\|)\n((?:\|.+\|\n?)*)/gm, (match, header, separator, body) => {
-    const headerCells = header.split("|").filter(c => c.trim());
-    const rows = body.trim().split("\n");
-
-    let table = '<table><thead><tr>';
-    headerCells.forEach(cell => {
-      table += `<th>${cell.trim()}</th>`;
-    });
-    table += '</tr></thead><tbody>';
-
-    rows.forEach(row => {
-      const cells = row.split("|").filter(c => c.trim());
-      table += '<tr>';
-      cells.forEach(cell => {
-        table += `<td>${cell.trim()}</td>`;
-      });
-      table += '</tr>';
-    });
-
-    table += '</tbody></table>';
-    return table;
-  });
-
-  // 段落（双换行分隔）
-  const lines = html.split("\n");
-  let result = "";
-  let inParagraph = false;
-
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    const isBlockElement = /^<(h[1-6]|ul|ol|li|pre|blockquote|hr|table|thead|tbody|tr|th|td|div|img)/.test(line);
-    const isClosingBlock = /^<\/(h[1-6]|ul|ol|pre|blockquote|table|thead|tbody|tr|div)>/.test(line);
-    const isEmpty = line.trim() === "";
-
-    if (isBlockElement || isClosingBlock) {
-      if (inParagraph) {
-        result += "</p>";
-        inParagraph = false;
-      }
-      result += line + "\n";
-    } else if (isEmpty) {
-      if (inParagraph) {
-        result += "</p>";
-        inParagraph = false;
-      }
-      result += "\n";
-    } else {
-      if (!inParagraph) {
-        result += "<p>";
-        inParagraph = true;
-      }
-      result += line + "<br>";
-    }
-  }
-
-  if (inParagraph) {
-    result += "</p>";
-  }
-
-  // 清理
-  result = result.replace(/<p><\/p>/g, "");
-  result = result.replace(/<p>(<h[1-6]>)/g, "$1");
-  result = result.replace(/(<\/h[1-6]>)<\/p>/g, "$1");
-  result = result.replace(/<p>(<ul>|<ol>|<pre>|<blockquote>|<hr>|<table>)/g, "$1");
-  result = result.replace(/(<\/ul>|<\/ol>|<\/pre>|<\/blockquote>|<\/table>)<\/p>/g, "$1");
-  result = result.replace(/<br><\/p>/g, "</p>");
-  result = result.replace(/<p><br>/g, "<p>");
-
-  return result;
 }
 
 const styles = {
