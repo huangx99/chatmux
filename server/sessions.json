@@ -8,7 +8,7 @@
     "type": "folder",
     "alive": true,
     "explorerState": {
-      "currentPath": "/home/huangxuan/code/earth",
+      "currentPath": "/home/huangxuan/code/powder",
       "history": [
         "/home/huangxuan/code",
         "/home/huangxuan/code/audiobook",
@@ -25,9 +25,21 @@
         "/home/huangxuan/code",
         "/home/huangxuan",
         "/home/huangxuan/code",
-        "/home/huangxuan/code/earth"
+        "/home/huangxuan/code/earth",
+        "/home/huangxuan/code",
+        "/home/huangxuan/code/engine",
+        "/home/huangxuan/code/engine/chatmux",
+        "/home/huangxuan/code/engine/chatmux/client",
+        "/home/huangxuan/code/engine/chatmux",
+        "/home/huangxuan/code/engine",
+        "/home/huangxuan/code",
+        "/home/huangxuan/code/planet",
+        "/home/huangxuan/code",
+        "/home/huangxuan",
+        "/home/huangxuan/code",
+        "/home/huangxuan/code/powder"
       ],
-      "historyIndex": 15
+      "historyIndex": 27
     }
   },
   {
