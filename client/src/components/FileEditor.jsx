@@ -119,6 +119,13 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
   const contentRef = useRef(content);
   useEffect(() => { contentRef.current = content; }, [content]);
 
+  // 编辑器内容变化
+  const handleChange = useCallback((value) => {
+    setContent(value);
+    contentRef.current = value;
+    setModified(true);
+  }, []);
+
   // 保存文件
   const handleSave = useCallback(async () => {
     setSaving(true);
