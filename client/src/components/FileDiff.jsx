@@ -236,7 +236,8 @@ function SplitView({ diffResult }) {
 // 统一视图
 function UnifiedView({ diffResult }) {
   const lines = [];
-  let lineNum = 1;
+  let oldLineNum = 1;  // 左侧文件行号
+  let newLineNum = 1;  // 右侧文件行号
 
   diffResult.forEach(part => {
     const partLines = part.value.split("\n").filter((_, i, arr) =>
@@ -248,7 +249,7 @@ function UnifiedView({ diffResult }) {
         lines.push({
           type: "add",
           content: line,
-          lineNum: lineNum++,
+          lineNum: newLineNum++,
         });
       });
     } else if (part.removed) {
@@ -256,7 +257,7 @@ function UnifiedView({ diffResult }) {
         lines.push({
           type: "remove",
           content: line,
-          lineNum: lineNum++,
+          lineNum: oldLineNum++,
         });
       });
     } else {
@@ -264,7 +265,8 @@ function UnifiedView({ diffResult }) {
         lines.push({
           type: "normal",
           content: line,
-          lineNum: lineNum++,
+          lineNum: oldLineNum++,
+          newLineNum: newLineNum++,
         });
       });
     }

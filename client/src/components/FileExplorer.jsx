@@ -32,7 +32,7 @@ function isLogFile(fileName) {
 function isPreviewable(fileName) {
   const previewExts = new Set([
     "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico",
-    "mp4", "webm", "ogg", "mov", "avi", "mkv",
+    "mp4", "webm", "mov", "avi", "mkv",
     "mp3", "wav", "ogg", "aac", "flac", "m4a",
     "pdf",
   ]);
@@ -198,11 +198,17 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // 路径拼接辅助函数（避免双斜杠）
+  const joinPath = (base, name) => {
+    if (base.endsWith("/")) {
+      return base + name;
+    }
+    return base + "/" + name;
+  };
+
   // 进入子目录
   const enterDir = (dirName) => {
-    const newPath = currentPath.endsWith("/")
-      ? currentPath + dirName
-      : currentPath + "/" + dirName;
+    const newPath = joinPath(currentPath, dirName);
     loadDir(newPath);
   };
 
@@ -214,41 +220,31 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
 
   // 打开文件编辑器
   const openFile = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setEditingFile({ path: filePath, name: fileName });
   };
 
   // 打开日志查看器
   const openLogViewer = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setViewingLog({ path: filePath, name: fileName });
   };
 
   // 打开文件预览
   const openPreview = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setPreviewingFile({ path: filePath, name: fileName });
   };
 
   // 打开 Office 文档
   const openOffice = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setViewingOffice({ path: filePath, name: fileName });
   };
 
   // 文件对比
   const handleCompare = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
 
     if (!compareFirst) {
       // 第一个文件
@@ -271,7 +267,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   };
 
   // 压缩文件
-  const compressFiles = async (format = "zip") => {
+  const compressFiles = async (format = "tar.gz") => {
     if (selectedFiles.size === 0) {
       alert("请先选择要压缩的文件");
       return;
@@ -282,10 +278,8 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     );
 
     const firstFile = [...selectedFiles][0];
-    const defaultName = firstFile.replace(/\.[^/.]+$/, "") + (format === "zip" ? ".zip" : ".tar.gz");
-    const outputPath = currentPath.endsWith("/")
-      ? currentPath + defaultName
-      : currentPath + "/" + defaultName;
+    const defaultName = firstFile.replace(/\.[^/.]+$/, "") + ".tar.gz";
+    const outputPath = joinPath(currentPath, defaultName);
 
     try {
       const res = await fetch("/api/files/compress", {
@@ -308,9 +302,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
 
   // 解压文件
   const extractFile = async (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
 
     try {
       const res = await fetch("/api/files/extract", {
@@ -1059,14 +1051,6 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                 </button>
               )}
               <div style={styles.menuDivider} />
-              {selectedFiles.size > 0 && (
-                <button style={styles.menuItem} onClick={() => {
-                  compressFiles("zip");
-                  setContextMenu(null);
-                }}>
-                  📦 压缩为 ZIP
-                </button>
-              )}
               {selectedFiles.size > 0 && (
                 <button style={styles.menuItem} onClick={() => {
                   compressFiles("tar.gz");

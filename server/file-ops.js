@@ -1,4 +1,4 @@
-import { readFile, writeFile, copyFile, rename, unlink, stat, mkdir } from "fs/promises";
+import { readFile, writeFile, copyFile, rename, unlink, stat, mkdir, rm } from "fs/promises";
 import { join, dirname, basename } from "path";
 import { createReadStream, createWriteStream } from "fs";
 import { EventEmitter } from "events";
@@ -121,6 +121,8 @@ class FileClipboard {
   // 粘贴到目标目录
   async paste(targetDir) {
     const results = [];
+    const failedItems = [];
+
     for (const item of this.items) {
       try {
         const targetPath = join(targetDir, item.name);
@@ -150,12 +152,13 @@ class FileClipboard {
         }
       } catch (e) {
         results.push({ success: false, from: item.path, error: e.message });
+        failedItems.push(item);
       }
     }
 
-    // 如果是剪切操作，清空剪贴板
+    // 如果是剪切操作，只保留失败的项目，清空成功的
     if (this.items.length > 0 && this.items[0].operation === "cut") {
-      this.items = [];
+      this.items = failedItems;
     }
 
     return results;
@@ -178,7 +181,14 @@ export const fileClipboard = new FileClipboard();
 // 删除文件或目录
 export async function deleteFile(filePath) {
   try {
-    await unlink(filePath);
+    const fileStat = await stat(filePath);
+    if (fileStat.isDirectory()) {
+      // 删除目录（递归）
+      await rm(filePath, { recursive: true, force: true });
+    } else {
+      // 删除文件
+      await unlink(filePath);
+    }
     return { success: true };
   } catch (e) {
     return { success: false, error: e.message };

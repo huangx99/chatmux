@@ -199,7 +199,14 @@ export default function LogViewer({ filePath, fileName, onClose }) {
       const match = line.match(tp.pattern);
       if (match) {
         try {
-          const date = new Date(match[0]);
+          let dateStr = match[0];
+
+          // 处理 Unix 时间戳（10位秒级）
+          if (/^\d{10}$/.test(dateStr)) {
+            dateStr = parseInt(dateStr) * 1000;
+          }
+
+          const date = new Date(dateStr);
           if (!isNaN(date.getTime())) {
             return date;
           }
@@ -402,20 +409,83 @@ export default function LogViewer({ filePath, fileName, onClose }) {
     URL.revokeObjectURL(url);
   };
 
-  // 高亮搜索词
+  // 高亮搜索词（返回 JSX）
   const highlightText = (text) => {
     if (!searchQuery) return text;
     const query = searchCaseSensitive ? searchQuery : searchQuery.toLowerCase();
     const textLower = searchCaseSensitive ? text : text.toLowerCase();
-    const index = textLower.indexOf(query);
-    if (index === -1) return text;
-    return (
-      <>
-        {text.substring(0, index)}
-        <span style={styles.highlight}>{text.substring(index, index + searchQuery.length)}</span>
-        {text.substring(index + searchQuery.length)}
-      </>
-    );
+
+    // 找到所有匹配位置
+    const parts = [];
+    let lastIndex = 0;
+    let searchFrom = 0;
+
+    while (searchFrom < textLower.length) {
+      const index = textLower.indexOf(query, searchFrom);
+      if (index === -1) break;
+
+      // 添加匹配前的文本
+      if (index > lastIndex) {
+        parts.push(text.substring(lastIndex, index));
+      }
+      // 添加高亮的匹配文本
+      parts.push(
+        <span key={index} style={styles.highlight}>
+          {text.substring(index, index + searchQuery.length)}
+        </span>
+      );
+      lastIndex = index + searchQuery.length;
+      searchFrom = lastIndex;
+    }
+
+    // 添加剩余文本
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts.length > 0 ? parts : text;
+  };
+
+  // 高亮搜索词（返回 HTML 字符串，用于 dangerouslySetInnerHTML）
+  const highlightTextHtml = (text) => {
+    if (!searchQuery) return escapeHtml(text);
+    const query = searchCaseSensitive ? searchQuery : searchQuery.toLowerCase();
+    const textLower = searchCaseSensitive ? text : text.toLowerCase();
+
+    let result = "";
+    let lastIndex = 0;
+    let searchFrom = 0;
+
+    while (searchFrom < textLower.length) {
+      const index = textLower.indexOf(query, searchFrom);
+      if (index === -1) break;
+
+      // 添加匹配前的文本
+      if (index > lastIndex) {
+        result += escapeHtml(text.substring(lastIndex, index));
+      }
+      // 添加高亮的匹配文本
+      result += `<span style="background:#e8a230;color:#0d1117;padding:0 2px;border-radius:2px">${escapeHtml(text.substring(index, index + searchQuery.length))}</span>`;
+      lastIndex = index + searchQuery.length;
+      searchFrom = lastIndex;
+    }
+
+    // 添加剩余文本
+    if (lastIndex < text.length) {
+      result += escapeHtml(text.substring(lastIndex));
+    }
+
+    return result || escapeHtml(text);
+  };
+
+  // HTML 转义
+  const escapeHtml = (text) => {
+    return text
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
   };
 
   if (loading) {
@@ -691,7 +761,7 @@ export default function LogViewer({ filePath, fileName, onClose }) {
               )}
               <span style={styles.logText}>
                 {ansiMode === "render" ? (
-                  <span dangerouslySetInnerHTML={{ __html: highlightText(ansiToHtml(line.raw)) }} />
+                  <span dangerouslySetInnerHTML={{ __html: highlightTextHtml(ansiToHtml(line.raw)) }} />
                 ) : ansiMode === "strip" ? (
                   highlightText(stripAnsi(line.raw))
                 ) : (

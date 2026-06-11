@@ -5,13 +5,13 @@ function getFileType(fileName) {
   const ext = fileName.split(".").pop()?.toLowerCase();
 
   const imageExts = ["jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico"];
-  const videoExts = ["mp4", "webm", "ogg", "mov", "avi", "mkv"];
-  const audioExts = ["mp3", "wav", "ogg", "aac", "flac", "m4a"];
+  const videoExts = ["mp4", "webm", "mov", "avi", "mkv"];
+  const audioExts = ["mp3", "wav", "ogg", "aac", "flac", "m4a", "opus"];
   const pdfExts = ["pdf"];
 
   if (imageExts.includes(ext)) return "image";
+  if (audioExts.includes(ext)) return "audio";  // 先检查音频，因为 ogg 更常用于音频
   if (videoExts.includes(ext)) return "video";
-  if (audioExts.includes(ext)) return "audio";
   if (pdfExts.includes(ext)) return "pdf";
   return "unknown";
 }

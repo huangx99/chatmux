@@ -37,7 +37,20 @@ export default function ChatWindow({
   }, [showSearch]);
 
   const createTerminal = useCallback((session, container) => {
-    if (termsRef.current.has(session.id)) return;
+    const existing = termsRef.current.get(session.id);
+    if (existing) {
+      if (existing.container === container && container.hasChildNodes()) return;
+
+      try {
+        existing.term.dispose();
+      } catch (e) {
+        console.error("重建终端失败:", e);
+      }
+      termsRef.current.delete(session.id);
+      while (container.firstChild) {
+        container.removeChild(container.firstChild);
+      }
+    }
 
     const term = new Terminal({
       fontSize: 14,
@@ -111,7 +124,10 @@ export default function ChatWindow({
         if (entry) {
           try {
             entry.term.dispose();
-            entry.container.remove();
+            // 清空容器内容，但不移除容器本身
+            while (entry.container.firstChild) {
+              entry.container.removeChild(entry.container.firstChild);
+            }
           } catch (e) {
             console.error("清理终端失败:", e);
           }
@@ -240,13 +256,34 @@ function TerminalPanel({ session, isActive, onCreate }) {
   const containerRef = useRef(null);
   const touchRef = useRef({ startY: 0, lastY: 0, scrolling: false });
   const initialized = useRef(false);
+  const cleanupRef = useRef(null);
 
   useEffect(() => {
-    if (containerRef.current && !initialized.current) {
-      initialized.current = true;
-      onCreate(session, containerRef.current);
+    const createIfReady = () => {
+      if (containerRef.current && !initialized.current) {
+        initialized.current = true;
+        cleanupRef.current = onCreate(session, containerRef.current) || null;
+      }
+    };
+
+    createIfReady();
+
+    // 当容器被清空时（比如被清理逻辑删除），重新初始化
+    if (containerRef.current && initialized.current && !containerRef.current.hasChildNodes()) {
+      initialized.current = false;
+      if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
+      requestAnimationFrame(() => {
+        if (containerRef.current) {
+          initialized.current = true;
+          cleanupRef.current = onCreate(session, containerRef.current) || null;
+        }
+      });
     }
-  }, [session.id]);
+
+    return () => {
+      if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
+    };
+  }, [session.id, onCreate]);
 
   const focusTerminal = () => {
     const textarea = containerRef.current?.querySelector("textarea");

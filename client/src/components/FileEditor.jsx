@@ -115,14 +115,25 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
     loadFile();
   }, [filePath]);
 
+  // 使用 ref 存储最新的 content，避免闭包问题
+  const contentRef = useRef(content);
+  useEffect(() => { contentRef.current = content; }, [content]);
+
+  // 编辑器内容变化
+  const handleChange = useCallback((value) => {
+    setContent(value);
+    contentRef.current = value;
+    setModified(true);
+  }, []);
+
   // 保存文件
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setSaving(true);
     try {
       const res = await fetch(`/api/file-content?path=${encodeURIComponent(filePath)}`, {
         method: "PUT",
         headers: { "Content-Type": "text/plain" },
-        body: content,
+        body: contentRef.current,
       });
       if (!res.ok) {
         const data = await res.json();
@@ -135,13 +146,7 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
     } finally {
       setSaving(false);
     }
-  };
-
-  // 编辑器内容变化
-  const handleChange = (value) => {
-    setContent(value || "");
-    setModified(true);
-  };
+  }, [filePath, onSave]);
 
   // 编辑器挂载
   const handleEditorMount = (editor) => {
@@ -165,7 +170,7 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [content]);
+  }, [handleSave]);
 
   // 关闭前检查
   const handleClose = () => {
