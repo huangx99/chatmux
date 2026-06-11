@@ -256,25 +256,33 @@ function TerminalPanel({ session, isActive, onCreate }) {
   const containerRef = useRef(null);
   const touchRef = useRef({ startY: 0, lastY: 0, scrolling: false });
   const initialized = useRef(false);
+  const cleanupRef = useRef(null);
 
   useEffect(() => {
-    // 当容器存在且终端未初始化时，创建终端
-    if (containerRef.current && !initialized.current) {
-      initialized.current = true;
-      onCreate(session, containerRef.current);
-    }
+    const createIfReady = () => {
+      if (containerRef.current && !initialized.current) {
+        initialized.current = true;
+        cleanupRef.current = onCreate(session, containerRef.current) || null;
+      }
+    };
+
+    createIfReady();
 
     // 当容器被清空时（比如被清理逻辑删除），重新初始化
     if (containerRef.current && initialized.current && !containerRef.current.hasChildNodes()) {
       initialized.current = false;
-      // 延迟重新创建，确保 DOM 已更新
+      if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
       requestAnimationFrame(() => {
         if (containerRef.current) {
           initialized.current = true;
-          onCreate(session, containerRef.current);
+          cleanupRef.current = onCreate(session, containerRef.current) || null;
         }
       });
     }
+
+    return () => {
+      if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
+    };
   }, [session.id, onCreate]);
 
   const focusTerminal = () => {

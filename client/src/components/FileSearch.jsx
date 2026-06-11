@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 
 export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFolder }) {
   const [query, setQuery] = useState("");
@@ -11,6 +11,8 @@ export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFold
 
   const inputRef = useRef(null);
   const searchTimerRef = useRef(null);
+  const queryRef = useRef(query);
+  queryRef.current = query;
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -19,13 +21,20 @@ export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFold
   // 搜索选项变化时自动搜索
   useEffect(() => {
     if (query.trim()) {
-      performSearch();
+      performSearch(query);
     }
-  }, [searchType, isRegex, caseSensitive]);
+  }, [searchType, isRegex, caseSensitive, performSearch, query]);
+
+  // 用 ref 保存最新搜索参数，避免闭包过期
+  const searchParamsRef = useRef({ searchPath, searchType, isRegex, caseSensitive });
+  searchParamsRef.current = { searchPath, searchType, isRegex, caseSensitive };
 
   // 执行搜索
-  const performSearch = async () => {
-    if (!query.trim()) {
+  const performSearch = useCallback(async (overrideQuery) => {
+    const q = overrideQuery ?? queryRef.current;
+    const { searchPath: sp, searchType: st, isRegex: re, caseSensitive: cs } = searchParamsRef.current;
+
+    if (!q.trim()) {
       setResults([]);
       setSearched(false);
       return;
@@ -36,11 +45,11 @@ export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFold
 
     try {
       const params = new URLSearchParams({
-        path: searchPath,
-        query: query.trim(),
-        type: searchType,
-        regex: isRegex.toString(),
-        caseSensitive: caseSensitive.toString(),
+        path: sp,
+        query: q.trim(),
+        type: st,
+        regex: re.toString(),
+        caseSensitive: cs.toString(),
       });
 
       const res = await fetch(`/api/search?${params}`);
@@ -52,21 +61,22 @@ export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFold
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
   // 输入变化时延迟搜索
   const handleInputChange = (e) => {
-    setQuery(e.target.value);
+    const val = e.target.value;
+    setQuery(val);
     if (searchTimerRef.current) {
       clearTimeout(searchTimerRef.current);
     }
-    searchTimerRef.current = setTimeout(performSearch, 300);
+    searchTimerRef.current = setTimeout(() => performSearch(val), 300);
   };
 
   // 键盘事件
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
-      performSearch();
+      performSearch(query);
     } else if (e.key === "Escape") {
       onClose();
     }
@@ -142,7 +152,7 @@ export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFold
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
         />
-        <button style={styles.searchBtn} onClick={performSearch}>
+        <button style={styles.searchBtn} onClick={() => performSearch(query)}>
           🔍
         </button>
       </div>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
+import { PPTXViewer } from "pptxviewjs";
 
 // 设置 PDF.js worker - 使用本地 worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
@@ -32,6 +33,7 @@ export default function OfficeViewer({ filePath, fileName, onClose }) {
 
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
+  const pptxViewerRef = useRef(null);
 
   useEffect(() => {
     const type = getFileType(fileName);
@@ -128,13 +130,32 @@ export default function OfficeViewer({ filePath, fileName, onClose }) {
     });
   };
 
-  // 加载 PowerPoint（简单实现，只显示文本内容）
+  // 加载 PowerPoint
   const loadPowerPoint = async (arrayBuffer) => {
-    // PPT 解析比较复杂，这里只做简单展示
-    setContent({
-      type: "powerpoint",
-      message: "PowerPoint 预览功能开发中...",
-    });
+    try {
+      const viewer = new PPTXViewer();
+      await viewer.loadFile(arrayBuffer);
+
+      pptxViewerRef.current = viewer;
+      setContent({ type: "powerpoint" });
+      setTotalPages(viewer.getSlideCount());
+      setCurrentPage(1);
+    } catch (e) {
+      setError("PPT 加载失败: " + e.message);
+    }
+  };
+
+  // 渲染 PPT 页面
+  const renderPptxSlide = async (slideIndex) => {
+    const viewer = pptxViewerRef.current;
+    const canvas = canvasRef.current;
+    if (!viewer || !canvas) return;
+
+    try {
+      await viewer.goToSlide(slideIndex, canvas);
+    } catch (e) {
+      console.error("渲染幻灯片失败:", e);
+    }
   };
 
   // 切换页面
@@ -155,6 +176,20 @@ export default function OfficeViewer({ filePath, fileName, onClose }) {
       renderPage(content.pdf, currentPage);
     }
   }, [currentPage, scale, content]);
+
+  // PPT 页面切换
+  const goToPPTPage = (pageNum) => {
+    if (pageNum >= 1 && pageNum <= totalPages) {
+      setCurrentPage(pageNum);
+    }
+  };
+
+  // 渲染 PPT 幻灯片
+  useEffect(() => {
+    if (content?.type === "powerpoint" && pptxViewerRef.current) {
+      renderPptxSlide(currentPage - 1);
+    }
+  }, [currentPage, content]);
 
   if (loading) {
     return (
@@ -218,6 +253,29 @@ export default function OfficeViewer({ filePath, fileName, onClose }) {
               </button>
             </>
           )}
+
+          {/* PPT 控制 */}
+          {fileType === "powerpoint" && content?.type === "powerpoint" && (
+            <>
+              <button
+                style={styles.controlBtn}
+                onClick={() => goToPPTPage(currentPage - 1)}
+                disabled={currentPage <= 1}
+              >
+                ◀
+              </button>
+              <span style={styles.pageInfo}>
+                {currentPage} / {totalPages}
+              </span>
+              <button
+                style={styles.controlBtn}
+                onClick={() => goToPPTPage(currentPage + 1)}
+                disabled={currentPage >= totalPages}
+              >
+                ▶
+              </button>
+            </>
+          )}
           <a
             href={`/api/download-file?path=${encodeURIComponent(filePath)}`}
             download={fileName}
@@ -253,9 +311,24 @@ export default function OfficeViewer({ filePath, fileName, onClose }) {
 
         {/* PowerPoint */}
         {content?.type === "powerpoint" && (
-          <div style={styles.centerMessage}>
-            <span style={{ fontSize: 48 }}>📽️</span>
-            <span>{content.message}</span>
+          <div style={styles.pptContainer}>
+            <div style={styles.slideWrapper}>
+              <canvas ref={canvasRef} style={styles.pptCanvas} />
+            </div>
+            <div style={styles.slideNav}>
+              {Array.from({ length: totalPages }, (_, idx) => (
+                <button
+                  key={idx}
+                  style={{
+                    ...styles.slideThumb,
+                    ...(currentPage === idx + 1 ? styles.slideThumbActive : {}),
+                  }}
+                  onClick={() => goToPPTPage(idx + 1)}
+                >
+                  {idx + 1}
+                </button>
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -421,6 +494,53 @@ const styles = {
     lineHeight: 1.6,
     fontSize: 14,
     color: "#c9d1d9",
+  },
+  pptContainer: {
+    display: "flex",
+    flexDirection: "column",
+    height: "100%",
+  },
+  slideWrapper: {
+    flex: 1,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    overflow: "auto",
+  },
+  pptCanvas: {
+    maxWidth: "100%",
+    maxHeight: "100%",
+    boxShadow: "0 4px 20px rgba(0,0,0,0.3)",
+  },
+  slideNav: {
+    display: "flex",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 6,
+    padding: "10px 16px",
+    background: "#161b22",
+    borderTop: "1px solid #30363d",
+    flexShrink: 0,
+    flexWrap: "wrap",
+  },
+  slideThumb: {
+    width: 32,
+    height: 32,
+    background: "#21262d",
+    border: "1px solid #30363d",
+    borderRadius: 4,
+    cursor: "pointer",
+    fontSize: 12,
+    color: "#8b949e",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  slideThumbActive: {
+    background: "#0d1117",
+    borderColor: "#58a6ff",
+    color: "#58a6ff",
   },
   excelContainer: {
     display: "flex",

@@ -32,7 +32,7 @@ function isLogFile(fileName) {
 function isPreviewable(fileName) {
   const previewExts = new Set([
     "jpg", "jpeg", "png", "gif", "svg", "webp", "bmp", "ico",
-    "mp4", "webm", "ogg", "mov", "avi", "mkv",
+    "mp4", "webm", "mov", "avi", "mkv",
     "mp3", "wav", "ogg", "aac", "flac", "m4a",
     "pdf",
   ]);
@@ -47,18 +47,11 @@ function isArchive(fileName) {
   return archiveExts.has(ext) || fileName.endsWith(".tar.gz");
 }
 
-// 判断是否是 Office 文档（已实现的格式）
+// 判断是否是 Office 文档
 function isOfficeFile(fileName) {
-  const officeExts = new Set(["pdf", "doc", "docx", "xls", "xlsx"]);
+  const officeExts = new Set(["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"]);
   const ext = fileName.split(".").pop()?.toLowerCase();
   return officeExts.has(ext);
-}
-
-// 判断是否是 PPT 文件（功能未实现）
-function isPptFile(fileName) {
-  const pptExts = new Set(["ppt", "pptx"]);
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  return pptExts.has(ext);
 }
 
 export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
@@ -1046,12 +1039,6 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   setContextMenu(null);
                 }}>
                   📄 查看文档
-                </button>
-              )}
-              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
-               isPptFile(contextMenu.fileName) && (
-                <button style={{ ...styles.menuItem, opacity: 0.5, cursor: "not-allowed" }} disabled>
-                  📽️ PPT 暂不支持
                 </button>
               )}
               {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
