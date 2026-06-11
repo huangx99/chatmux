@@ -16,6 +16,13 @@ export default function FileSearch({ searchPath, onClose, onOpenFile, onOpenFold
     inputRef.current?.focus();
   }, []);
 
+  // 搜索选项变化时自动搜索
+  useEffect(() => {
+    if (query.trim()) {
+      performSearch();
+    }
+  }, [searchType, isRegex, caseSensitive]);
+
   // 执行搜索
   const performSearch = async () => {
     if (!query.trim()) {
