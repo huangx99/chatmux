@@ -27,6 +27,8 @@ import {
 import { transferManager, fileClipboard, deleteFiles } from "./file-ops.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const isWindows = process.platform === "win32";
+const defaultShell = isWindows ? "powershell.exe" : "bash";
 
 function expandHome(p) {
   if (p === "~" || p.startsWith("~/")) {
@@ -525,7 +527,7 @@ wss.on("connection", (ws, req) => {
   const sessionId = url.searchParams.get("sessionId");
 
   if (action === "create") {
-    const command = url.searchParams.get("command") || "bash";
+    const command = url.searchParams.get("command") || defaultShell;
     const args = (url.searchParams.get("args") || "").split(",").filter(Boolean);
     const cols = parseInt(url.searchParams.get("cols")) || 80;
     const rows = parseInt(url.searchParams.get("rows")) || 24;

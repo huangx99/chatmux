@@ -3,9 +3,11 @@ import { randomUUID } from "crypto";
 import { readFileSync, writeFileSync, existsSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
+import os from "os";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const STORE_FILE = join(__dirname, "sessions.json");
+const isWindows = process.platform === "win32";
 const BUFFER_MAX = 1024 * 100; // 每个会话保留最近 100KB 输出
 
 const sessions = new Map();
@@ -74,6 +76,12 @@ function attachBuffer(session) {
 export function createSession(command, args = [], options = {}) {
   const id = options.id || randomUUID();
 
+  // Windows 上自动将 bash 转为 PowerShell
+  if (isWindows && (command === "bash" || command === "sh")) {
+    command = "powershell.exe";
+    if (args.length === 0) args = ["-NoLogo"];
+  }
+
   // 文件夹类型会话
   if (command === "__folder__") {
     const folderName = options.cwd?.split("/").pop() || "文件夹";
@@ -81,7 +89,7 @@ export function createSession(command, args = [], options = {}) {
       id,
       command: "__folder__",
       args: [],
-      cwd: options.cwd || process.env.HOME,
+      cwd: options.cwd || os.homedir(),
       label: folderName,
       type: "folder",
       pty: null,
@@ -101,7 +109,7 @@ export function createSession(command, args = [], options = {}) {
       name: "xterm-256color",
       cols: options.cols || 80,
       rows: options.rows || 24,
-      cwd: options.cwd || process.env.HOME,
+      cwd: options.cwd || os.homedir(),
       env: { ...process.env, TERM: "xterm-256color" },
     });
   } catch (e) {
@@ -109,7 +117,7 @@ export function createSession(command, args = [], options = {}) {
       id,
       command,
       args,
-      cwd: options.cwd || process.env.HOME,
+      cwd: options.cwd || os.homedir(),
       label: options.label || command,
       type: "terminal",
       pty: null,
@@ -126,7 +134,7 @@ export function createSession(command, args = [], options = {}) {
     id,
     command,
     args,
-    cwd: options.cwd || process.env.HOME,
+    cwd: options.cwd || os.homedir(),
     label: options.label || command,
     type: "terminal",
     pty: shell,
@@ -260,7 +268,7 @@ export function restartSession(id) {
       name: "xterm-256color",
       cols: 80,
       rows: 24,
-      cwd: session.cwd || process.env.HOME,
+      cwd: session.cwd || os.homedir(),
       env: { ...process.env, TERM: "xterm-256color" },
     });
 
