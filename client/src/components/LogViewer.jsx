@@ -437,7 +437,7 @@ export default function LogViewer({ filePath, fileName, onClose }) {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} onContextMenu={(e) => e.stopPropagation()}>
       {/* 头部工具栏 */}
       <div style={styles.toolbar}>
         <div style={styles.toolbarLeft}>

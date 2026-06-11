@@ -207,7 +207,7 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
   }
 
   return (
-    <div style={styles.container}>
+    <div style={styles.container} onContextMenu={(e) => e.stopPropagation()}>
       {/* 头部工具栏 */}
       <div style={styles.header}>
         <div style={styles.headerLeft}>
