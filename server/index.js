@@ -181,17 +181,35 @@ app.get("/api/download-file", async (req, res) => {
       return res.status(404).json({ error: "文件不存在" });
     }
 
-    const fileName = filePath.split("/").pop();
     const fileStat = await stat(filePath);
+
+    // 检查是否是文件（不是目录）
+    if (!fileStat.isFile()) {
+      return res.status(400).json({ error: "不能下载文件夹" });
+    }
+
+    const fileName = filePath.split("/").pop();
 
     res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(fileName)}`);
     res.setHeader("Content-Type", "application/octet-stream");
     res.setHeader("Content-Length", fileStat.size);
 
     const readStream = createReadStream(filePath);
+
+    // 处理流错误
+    readStream.on("error", (err) => {
+      console.error("文件读取错误:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
     readStream.pipe(res);
   } catch (e) {
-    res.status(500).json({ error: e.message });
+    console.error("下载错误:", e);
+    if (!res.headersSent) {
+      res.status(500).json({ error: e.message });
+    }
   }
 });
 
