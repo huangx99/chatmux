@@ -243,7 +243,7 @@ export default function FileEditor({ filePath, fileName, onClose, onSave }) {
       {/* 编辑器区域 */}
       <div style={styles.editorContainer}>
         {showPreview && isMd ? (
-          <div style={styles.preview} dangerouslySetInnerHTML={{ __html: marked.parse(content || "") }} />
+          <div className="preview" style={styles.preview} dangerouslySetInnerHTML={{ __html: marked.parse(content || "") }} />
         ) : (
           <Editor
             height="100%"
