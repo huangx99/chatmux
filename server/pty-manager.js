@@ -21,6 +21,7 @@ function saveStore() {
     label: s.label,
     type: s.type || (s.command === "__folder__" ? "folder" : "terminal"),
     alive: s.alive,
+    createdAt: s.createdAt,
     explorerState: s.explorerState || null,
   }));
   writeFileSync(STORE_FILE, JSON.stringify(data, null, 2));
@@ -241,7 +242,7 @@ export function restoreSessions() {
       type: "terminal",
       pty: null,
       buffer: createBuffer(),
-      createdAt: Date.now(),
+      createdAt: meta.createdAt || Date.now(),
       alive: false,
     };
     sessions.set(meta.id, session);

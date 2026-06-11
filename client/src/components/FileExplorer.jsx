@@ -47,11 +47,18 @@ function isArchive(fileName) {
   return archiveExts.has(ext) || fileName.endsWith(".tar.gz");
 }
 
-// 判断是否是 Office 文档
+// 判断是否是 Office 文档（已实现的格式）
 function isOfficeFile(fileName) {
-  const officeExts = new Set(["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx"]);
+  const officeExts = new Set(["pdf", "doc", "docx", "xls", "xlsx"]);
   const ext = fileName.split(".").pop()?.toLowerCase();
   return officeExts.has(ext);
+}
+
+// 判断是否是 PPT 文件（功能未实现）
+function isPptFile(fileName) {
+  const pptExts = new Set(["ppt", "pptx"]);
+  const ext = fileName.split(".").pop()?.toLowerCase();
+  return pptExts.has(ext);
 }
 
 export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, onClose }) {
@@ -198,11 +205,17 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
     return () => window.removeEventListener("keydown", handler);
   }, []);
 
+  // 路径拼接辅助函数（避免双斜杠）
+  const joinPath = (base, name) => {
+    if (base.endsWith("/")) {
+      return base + name;
+    }
+    return base + "/" + name;
+  };
+
   // 进入子目录
   const enterDir = (dirName) => {
-    const newPath = currentPath.endsWith("/")
-      ? currentPath + dirName
-      : currentPath + "/" + dirName;
+    const newPath = joinPath(currentPath, dirName);
     loadDir(newPath);
   };
 
@@ -214,41 +227,31 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
 
   // 打开文件编辑器
   const openFile = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setEditingFile({ path: filePath, name: fileName });
   };
 
   // 打开日志查看器
   const openLogViewer = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setViewingLog({ path: filePath, name: fileName });
   };
 
   // 打开文件预览
   const openPreview = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setPreviewingFile({ path: filePath, name: fileName });
   };
 
   // 打开 Office 文档
   const openOffice = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
     setViewingOffice({ path: filePath, name: fileName });
   };
 
   // 文件对比
   const handleCompare = (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
 
     if (!compareFirst) {
       // 第一个文件
@@ -283,9 +286,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
 
     const firstFile = [...selectedFiles][0];
     const defaultName = firstFile.replace(/\.[^/.]+$/, "") + ".tar.gz";
-    const outputPath = currentPath.endsWith("/")
-      ? currentPath + defaultName
-      : currentPath + "/" + defaultName;
+    const outputPath = joinPath(currentPath, defaultName);
 
     try {
       const res = await fetch("/api/files/compress", {
@@ -308,9 +309,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
 
   // 解压文件
   const extractFile = async (fileName) => {
-    const filePath = currentPath.endsWith("/")
-      ? currentPath + fileName
-      : currentPath + "/" + fileName;
+    const filePath = joinPath(currentPath, fileName);
 
     try {
       const res = await fetch("/api/files/extract", {
@@ -1047,6 +1046,12 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
                   setContextMenu(null);
                 }}>
                   📄 查看文档
+                </button>
+              )}
+              {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&
+               isPptFile(contextMenu.fileName) && (
+                <button style={{ ...styles.menuItem, opacity: 0.5, cursor: "not-allowed" }} disabled>
+                  📽️ PPT 暂不支持
                 </button>
               )}
               {!entries.find(e => e.name === contextMenu.fileName)?.isDirectory &&

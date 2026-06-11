@@ -139,22 +139,22 @@ export default function OfficeViewer({ filePath, fileName, onClose }) {
 
   // 切换页面
   const goToPage = (pageNum) => {
-    if (content?.type === "pdf" && content.pdf) {
+    if (content?.type === "pdf" && content.pdf && pageNum >= 1 && pageNum <= totalPages) {
       setCurrentPage(pageNum);
-      renderPage(content.pdf, pageNum);
     }
   };
 
   // 缩放
   const handleZoom = (delta) => {
-    setScale((prev) => {
-      const newScale = Math.max(0.5, Math.min(3, prev + delta));
-      if (content?.type === "pdf" && content.pdf) {
-        renderPage(content.pdf, currentPage);
-      }
-      return newScale;
-    });
+    setScale((prev) => Math.max(0.5, Math.min(3, prev + delta)));
   };
+
+  // 当页面或缩放变化时重新渲染 PDF
+  useEffect(() => {
+    if (content?.type === "pdf" && content.pdf) {
+      renderPage(content.pdf, currentPage);
+    }
+  }, [currentPage, scale, content]);
 
   if (loading) {
     return (

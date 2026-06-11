@@ -53,15 +53,33 @@ async function createTarGzArchive(sourceFiles, output) {
 function bindPty(ws, session) {
   if (!session.pty) return;
 
-  session.pty.onData((data) => {
+  // 存储监听器引用，以便后续移除
+  const listeners = {
+    onData: null,
+    onExit: null,
+  };
+
+  listeners.onData = session.pty.onData((data) => {
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({ type: "output", data }));
     }
   });
 
-  session.pty.onExit(({ exitCode }) => {
+  listeners.onExit = session.pty.onExit(({ exitCode }) => {
     if (ws.readyState === ws.OPEN) {
       ws.send(JSON.stringify({ type: "exit", exitCode }));
+    }
+  });
+
+  // WebSocket 关闭时移除监听器
+  ws.on("close", () => {
+    if (listeners.onData) {
+      listeners.onData.dispose();
+      listeners.onData = null;
+    }
+    if (listeners.onExit) {
+      listeners.onExit.dispose();
+      listeners.onExit = null;
     }
   });
 }
