@@ -5,6 +5,7 @@ import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import SearchBar from "./SearchBar";
 import MobileKeys from "./MobileKeys";
+import FileExplorer from "./FileExplorer";
 
 export default function ChatWindow({
   sessions,
@@ -13,6 +14,8 @@ export default function ChatWindow({
   sendResize,
   registerWriter,
   onReconnect,
+  onAddSession,
+  onDeleteSession,
   mobile = false,
 }) {
   const termsRef = useRef(new Map());
@@ -125,6 +128,20 @@ export default function ChatWindow({
     sendInputRef.current(data);
   }, []);
 
+  // 处理文件夹中打开终端
+  const handleOpenTerminalFromFolder = useCallback((path) => {
+    if (onAddSession) {
+      onAddSession("bash", [], path);
+    }
+  }, [onAddSession]);
+
+  // 处理关闭文件夹
+  const handleCloseFolder = useCallback((id) => {
+    if (onDeleteSession) {
+      onDeleteSession(id);
+    }
+  }, [onDeleteSession]);
+
   if (!activeSession) {
     return (
       <div style={styles.empty}>
@@ -168,12 +185,30 @@ export default function ChatWindow({
 
       <div style={styles.terminalsWrapper}>
         {sessions.map((s) => (
-          <TerminalPanel
-            key={s.id}
-            session={s}
-            isActive={s.id === activeId}
-            onCreate={createTerminal}
-          />
+          s.command === "__folder__" ? (
+            <div
+              key={s.id}
+              style={{
+                flex: 1,
+                display: s.id === activeId ? "flex" : "none",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              <FileExplorer
+                path={s.cwd}
+                onOpenTerminal={handleOpenTerminalFromFolder}
+                onClose={() => handleCloseFolder(s.id)}
+              />
+            </div>
+          ) : (
+            <TerminalPanel
+              key={s.id}
+              session={s}
+              isActive={s.id === activeId}
+              onCreate={createTerminal}
+            />
+          )
         ))}
       </div>
 

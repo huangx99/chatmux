@@ -58,7 +58,7 @@ export default function Sidebar({ sessions, activeId, onSelect, onAdd, onDelete,
                 className={`sidebar-item ${s.id === activeId ? "active" : ""}`}
                 onClick={() => onSelect(s.id)}
               >
-                <span style={styles.dot(s.alive)} />
+                <span style={s.command === "__folder__" ? styles.folderDot : styles.dot(s.alive)} />
                 <div style={styles.itemInfo}>
                   {editingId === s.id ? (
                     <input
@@ -91,7 +91,7 @@ export default function Sidebar({ sessions, activeId, onSelect, onAdd, onDelete,
                     <div style={styles.itemName}>{s.label || s.command}</div>
                   )}
                   <div style={styles.itemMeta}>
-                    {s.alive ? "运行中" : "已退出"}
+                    {s.command === "__folder__" ? "文件夹" : (s.alive ? "运行中" : "已退出")}
                   </div>
                 </div>
                 <div className="actions">
@@ -174,6 +174,10 @@ const styles = {
     width: 7, height: 7, borderRadius: "50%",
     background: alive ? "#4ade80" : "#666", flexShrink: 0,
   }),
+  folderDot: {
+    width: 7, height: 7, borderRadius: "50%",
+    background: "#f0883e", flexShrink: 0,
+  },
   itemInfo: { flex: 1, overflow: "hidden" },
   itemName: {
     fontWeight: 500, fontSize: 13, whiteSpace: "nowrap",

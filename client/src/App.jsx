@@ -26,6 +26,7 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openFolders, setOpenFolders] = useState(new Map()); // 存储打开的文件夹
   const [groups, setGroups] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("chatmux-groups") || "{}");
@@ -130,6 +131,35 @@ export default function App() {
   }, [sessions, attachSession]);
 
   const handleAdd = useCallback((command, args = [], cwd = null) => {
+    // 处理文件夹类型
+    if (command === "__folder__") {
+      const folderPath = cwd || "~";
+      const folderId = "folder_" + Date.now();
+      const folderName = folderPath.split("/").pop() || "文件夹";
+
+      setOpenFolders((prev) => new Map(prev).set(folderId, {
+        id: folderId,
+        path: folderPath,
+        name: folderName,
+      }));
+
+      setSessions((prev) => [...prev, {
+        id: folderId,
+        command: "__folder__",
+        label: folderName,
+        args: [],
+        cwd: folderPath,
+        group: "",
+        alive: true,
+        ws: null,
+      }]);
+      setActiveId(folderId);
+      setShowAdd(false);
+      setShowPalette(false);
+      setSidebarOpen(false);
+      return;
+    }
+
     const params = new URLSearchParams({ action: "create", command, args: args.join(","), cols: "80", rows: "24", ...(cwd && { cwd }) });
     const ws = new WebSocket(`${WS_BASE()}?${params}`);
     ws.onmessage = (event) => {
@@ -167,6 +197,18 @@ export default function App() {
   }, []);
 
   const handleDelete = useCallback((id) => {
+    // 处理文件夹类型的删除
+    if (id.startsWith("folder_")) {
+      setOpenFolders((prev) => {
+        const next = new Map(prev);
+        next.delete(id);
+        return next;
+      });
+      setSessions((prev) => prev.filter((s) => s.id !== id));
+      setActiveId((prev) => (prev === id ? null : prev));
+      return;
+    }
+
     const ws = wsMapRef.current.get(id);
     if (ws) { ws.close(); wsMapRef.current.delete(id); }
     writerMapRef.current.delete(id);
@@ -242,6 +284,8 @@ export default function App() {
             sendResize={sendResize}
             registerWriter={registerWriter}
             onReconnect={handleReconnect}
+            onAddSession={handleAdd}
+            onDeleteSession={handleDelete}
             mobile={true}
           />
         </div>
@@ -271,6 +315,8 @@ export default function App() {
         sendResize={sendResize}
         registerWriter={registerWriter}
         onReconnect={handleReconnect}
+        onAddSession={handleAdd}
+        onDeleteSession={handleDelete}
       />
       {showAdd && <AddFriend onAdd={handleAdd} onClose={() => setShowAdd(false)} />}
       {showPalette && <CommandPalette sessions={sessions} onAdd={handleAdd} onSelect={handleSelect} onClose={() => setShowPalette(false)} />}

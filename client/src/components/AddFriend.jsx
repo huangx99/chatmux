@@ -6,6 +6,7 @@ const PRESETS = [
   { name: "python", label: "🐍 Python", desc: "Python REPL" },
   { name: "git", label: "📦 Git", desc: "版本控制（进入 bash 后用 git）" },
   { name: "docker", label: "🐳 Docker", desc: "容器管理 CLI" },
+  { name: "folder", label: "📁 文件夹", desc: "浏览文件夹内容" },
 ];
 
 export default function AddFriend({ onAdd, onClose }) {
@@ -20,13 +21,34 @@ export default function AddFriend({ onAdd, onClose }) {
     e.preventDefault();
     const cmd = command.trim();
     if (!cmd) return;
+
+    // 文件夹模式
+    if (cmd === "__folder__") {
+      if (cwd.trim()) {
+        onAdd("__folder__", [], cwd.trim());
+      }
+      return;
+    }
+
     const argList = args.trim() ? args.trim().split(/\s+/) : [];
     onAdd(cmd, argList, cwd.trim() || null);
   };
 
   const handlePreset = (name) => {
-    const cmd = (name === "git" || name === "docker") ? "bash" : name;
-    onAdd(cmd, [], cwd.trim() || null);
+    if (name === "folder") {
+      // 文件夹模式：需要选择目录
+      if (cwd.trim()) {
+        onAdd("__folder__", [], cwd.trim());
+      } else {
+        // 如果没有输入目录，打开文件浏览器选择
+        browseDir("~");
+        // 设置为文件夹模式
+        setCommand("__folder__");
+      }
+    } else {
+      const cmd = (name === "git" || name === "docker") ? "bash" : name;
+      onAdd(cmd, [], cwd.trim() || null);
+    }
   };
 
   // 浏览目录
@@ -43,8 +65,13 @@ export default function AddFriend({ onAdd, onClose }) {
   };
 
   const selectDir = (dir) => {
-    setCwd(dir);
-    setShowBrowse(false);
+    if (command === "__folder__") {
+      // 文件夹模式：直接打开文件夹
+      onAdd("__folder__", [], dir);
+    } else {
+      setCwd(dir);
+      setShowBrowse(false);
+    }
   };
 
   return (
