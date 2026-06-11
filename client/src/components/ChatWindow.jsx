@@ -198,8 +198,13 @@ export default function ChatWindow({
               }}
             >
               <FileExplorer
-                path={s.cwd}
+                sessionId={s.id}
+                initialPath={s.cwd}
                 onOpenTerminal={handleOpenTerminalFromFolder}
+                onOpenFile={(path, file) => {
+                  // 预留：未来实现文件编辑器
+                  console.log("打开文件:", path, file);
+                }}
                 onClose={() => handleCloseFolder(s.id)}
               />
             </div>
