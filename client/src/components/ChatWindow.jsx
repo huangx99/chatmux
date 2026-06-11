@@ -99,14 +99,24 @@ export default function ChatWindow({
     });
   }, [activeId]);
 
-  // 清理已删除
+  // 清理已删除的终端（只在会话真正被删除时清理）
   useEffect(() => {
-    const ids = new Set(sessions.map((s) => s.id));
-    termsRef.current.forEach(({ term, container }, id) => {
-      if (!ids.has(id)) {
-        term.dispose();
-        container.remove();
-        termsRef.current.delete(id);
+    const currentSessionIds = new Set(sessions.map((s) => s.id));
+    const terminalIds = [...termsRef.current.keys()];
+
+    terminalIds.forEach((id) => {
+      // 只清理确实不在 sessions 列表中的终端
+      if (!currentSessionIds.has(id)) {
+        const entry = termsRef.current.get(id);
+        if (entry) {
+          try {
+            entry.term.dispose();
+            entry.container.remove();
+          } catch (e) {
+            console.error("清理终端失败:", e);
+          }
+          termsRef.current.delete(id);
+        }
       }
     });
   }, [sessions]);
