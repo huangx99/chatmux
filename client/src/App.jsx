@@ -150,8 +150,16 @@ export default function App() {
     setSidebarOpen(false);
     const s = sessions.find((x) => x.id === id);
     // 文件夹类型不需要 attach
-    if (s && !wsMapRef.current.has(id) && s.type !== "folder" && s.command !== "__folder__") {
-      attachSession(id);
+    if (s && s.type !== "folder" && s.command !== "__folder__") {
+      // 如果没有 WebSocket 连接，或者连接已关闭，重新连接
+      const ws = wsMapRef.current.get(id);
+      if (!ws || ws.readyState !== WebSocket.OPEN) {
+        // 清理旧的连接
+        if (ws) {
+          wsMapRef.current.delete(id);
+        }
+        attachSession(id);
+      }
     }
   }, [sessions, attachSession]);
 
