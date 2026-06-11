@@ -6,7 +6,7 @@ import CommandPalette from "./components/CommandPalette";
 
 const WS_BASE = () => {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  return `${proto}//${window.location.host}`;
+  return `${proto}//${window.location.host}/ws`;
 };
 
 function useIsMobile() {

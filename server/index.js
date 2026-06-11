@@ -86,7 +86,7 @@ function bindPty(ws, session) {
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({ server, path: "/ws" });
 
 app.use(express.static(join(__dirname, "../client/dist")));
 app.use(express.json());
