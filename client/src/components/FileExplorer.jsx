@@ -179,6 +179,7 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   // 选择文件
   const toggleSelect = (fileName, e) => {
     e.stopPropagation();
+    setContextMenu(null); // 隐藏右键菜单
     setSelectedFiles(prev => {
       const next = new Set(prev);
       if (e.ctrlKey || e.metaKey) {
