@@ -34,7 +34,7 @@ function renderMarkdown(text) {
   return DOMPurify.sanitize(html);
 }
 
-export default function AIChat({ onClose, terminalSelection }) {
+export default function AIChat({ onClose, terminalSelection, sendInput, activeId }) {
   const [config, setConfig] = useState(loadConfig);
   const [showSettings, setShowSettings] = useState(false);
   const [messages, setMessages] = useState(loadHistory);
@@ -47,6 +47,8 @@ export default function AIChat({ onClose, terminalSelection }) {
   const abortRef = useRef(null);
   const configRef = useRef(config);
   configRef.current = config;
+  const sendInputRef = useRef(sendInput);
+  sendInputRef.current = sendInput;
 
   // 保存配置
   useEffect(() => {
@@ -175,7 +177,12 @@ export default function AIChat({ onClose, terminalSelection }) {
             ]);
             setStreamContent(`执行中: ${cmd}`);
 
-            // 执行命令
+            // 同时将命令发送到终端显示
+            if (sendInputRef.current) {
+              sendInputRef.current(cmd + "\n");
+            }
+
+            // 执行命令（获取干净输出给 AI 分析）
             const result = await execCommand(cmd);
 
             // 更新命令状态为完成

@@ -454,6 +454,8 @@ export default function App() {
           key={aiSelectionKey}
           onClose={() => setShowAI(false)}
           terminalSelection={terminalSelection}
+          sendInput={sendInput}
+          activeId={activeId}
         />
       )}
       {showAdd && <AddFriend onAdd={handleAdd} onClose={() => setShowAdd(false)} />}
