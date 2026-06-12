@@ -172,19 +172,32 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   };
 
   // 加载传输任务
-  const loadTransfers = async () => {
+  const transfersRef = useRef(transfers);
+  transfersRef.current = transfers;
+
+  const loadTransfers = useCallback(async () => {
     try {
       const res = await fetch("/api/transfers");
       const data = await res.json();
-      setTransfers(data.filter(t => t.status !== "completed"));
-    } catch {}
-  };
-
-  // 定期刷新传输进度
-  useEffect(() => {
-    const interval = setInterval(loadTransfers, 1000);
-    return () => clearInterval(interval);
+      const active = data.filter(t => t.status !== "completed");
+      setTransfers(active);
+      return active.length;
+    } catch { return 0; }
   }, []);
+
+  // 按需轮询：有传输任务时 1s，无任务时 10s（低频探测）
+  useEffect(() => {
+    let timer = null;
+    let stopped = false;
+    const poll = async () => {
+      if (stopped) return;
+      const activeCount = await loadTransfers();
+      const interval = activeCount > 0 ? 1000 : 10000;
+      timer = setTimeout(poll, interval);
+    };
+    poll();
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [loadTransfers]);
 
   // 键盘快捷键
   useEffect(() => {
@@ -1446,18 +1459,21 @@ const styles = {
   },
 };
 
-// CSS
-const style = document.createElement("style");
-style.textContent = `
-  @keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-  }
-  .file-row:hover {
-    background: rgba(88, 166, 255, 0.1) !important;
-  }
-  input[type="checkbox"] {
-    accent-color: #58a6ff;
-  }
-`;
-document.head.appendChild(style);
+// CSS（防止 HMR 重复注入）
+if (!document.getElementById("chatmux-file-explorer-style")) {
+  const style = document.createElement("style");
+  style.id = "chatmux-file-explorer-style";
+  style.textContent = `
+    @keyframes spin {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+    .file-row:hover {
+      background: rgba(88, 166, 255, 0.1) !important;
+    }
+    input[type="checkbox"] {
+      accent-color: #58a6ff;
+    }
+  `;
+  document.head.appendChild(style);
+}

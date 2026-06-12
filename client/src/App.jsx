@@ -46,6 +46,12 @@ export default function App() {
   const writerMapRef = useRef(new Map());
   const attachSessionRef = useRef(null);
 
+  // 用 ref 缓存频繁变化的状态，避免 useCallback 闭包依赖导致重建
+  const sessionsRef = useRef(sessions);
+  useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
+  const activeIdRef = useRef(activeId);
+  useEffect(() => { activeIdRef.current = activeId; }, [activeId]);
+
   useEffect(() => {
     const handler = (e) => {
       if ((e.ctrlKey || e.metaKey) && e.key === "k") {
@@ -100,6 +106,7 @@ export default function App() {
         if (restored.length > 0) {
           const firstId = restored[0].id;
           setActiveId(firstId);
+          activeIdRef.current = firstId;
           // 文件夹类型不需要 attach
           const firstSession = restored[0];
           if (firstSession.type !== "folder" && firstSession.command !== "__folder__") {
@@ -154,8 +161,9 @@ export default function App() {
 
   const handleSelect = useCallback((id) => {
     setActiveId(id);
+    activeIdRef.current = id;
     setSidebarOpen(false);
-    const s = sessions.find((x) => x.id === id);
+    const s = sessionsRef.current.find((x) => x.id === id);
     // 文件夹类型不需要 attach
     if (s && s.type !== "folder" && s.command !== "__folder__") {
       // 如果没有 WebSocket 连接，或者连接已关闭，重新连接
@@ -168,28 +176,30 @@ export default function App() {
         attachSession(id);
       }
     }
-  }, [sessions, attachSession]);
+  }, [attachSession]);
 
   useEffect(() => {
     if (sessions.length === 0) {
-      if (activeId !== null) setActiveId(null);
+      if (activeId !== null) { setActiveId(null); activeIdRef.current = null; }
       return;
     }
     if (!activeId || !sessions.some((s) => s.id === activeId)) {
-      setActiveId(sessions[0].id);
+      const newId = sessions[0].id;
+      setActiveId(newId);
+      activeIdRef.current = newId;
     }
   }, [activeId, sessions]);
 
   useEffect(() => {
     if (!activeId) return;
-    const s = sessions.find((x) => x.id === activeId);
+    const s = sessionsRef.current.find((x) => x.id === activeId);
     if (!s || s.type === "folder" || s.command === "__folder__") return;
     const ws = wsMapRef.current.get(activeId);
     if (!ws || ws.readyState === WebSocket.CLOSED || ws.readyState === WebSocket.CLOSING) {
       if (ws) wsMapRef.current.delete(activeId);
       attachSession(activeId);
     }
-  }, [activeId, sessions, attachSession]);
+  }, [activeId, attachSession]);
 
   const handleAdd = useCallback((command, args = [], cwd = null) => {
     // 处理文件夹类型 - 通过服务器 API 创建以实现多端同步
@@ -222,6 +232,7 @@ export default function App() {
               ws: null,
             }]);
             setActiveId(msg.sessionId);
+            activeIdRef.current = msg.sessionId;
             setShowAdd(false);
             setShowPalette(false);
             setSidebarOpen(false);
@@ -242,6 +253,7 @@ export default function App() {
           case "created":
             setSessions((prev) => [...prev, { id: msg.sessionId, command: msg.command, label: msg.command, args, cwd, group: "", alive: true, ws }]);
             setActiveId(msg.sessionId);
+            activeIdRef.current = msg.sessionId;
             wsMapRef.current.set(msg.sessionId, ws);
             setShowAdd(false);
             setShowPalette(false);
@@ -270,7 +282,7 @@ export default function App() {
   }, []);
 
   const handleDelete = useCallback((id) => {
-    const fallbackId = pickFallbackSessionId(sessions, id);
+    const fallbackId = pickFallbackSessionId(sessionsRef.current, id);
 
     // 处理文件夹类型的删除
     if (id.startsWith("folder_")) {
@@ -280,7 +292,10 @@ export default function App() {
         return next;
       });
       setSessions((prev) => prev.filter((s) => s.id !== id));
-      setActiveId((current) => (current === id ? fallbackId : current));
+      setActiveId((current) => {
+        if (current === id) { activeIdRef.current = fallbackId; return fallbackId; }
+        return current;
+      });
       return;
     }
 
@@ -289,8 +304,11 @@ export default function App() {
     writerMapRef.current.delete(id);
     fetch(`/api/sessions/${id}`, { method: "DELETE" }).catch(() => {});
     setSessions((prev) => prev.filter((s) => s.id !== id));
-    setActiveId((current) => (current === id ? fallbackId : current));
-  }, [sessions]);
+    setActiveId((current) => {
+      if (current === id) { activeIdRef.current = fallbackId; return fallbackId; }
+      return current;
+    });
+  }, []);
 
   const handleRename = useCallback((id, label) => {
     setSessions((prev) => prev.map((s) => s.id === id ? { ...s, label } : s));
@@ -305,16 +323,18 @@ export default function App() {
   const handleReconnect = useCallback((id) => { attachSession(id); }, [attachSession]);
 
   const sendInput = useCallback((data) => {
-    if (!activeId) return;
-    const ws = wsMapRef.current.get(activeId);
+    const aid = activeIdRef.current;
+    if (!aid) return;
+    const ws = wsMapRef.current.get(aid);
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "input", data }));
-  }, [activeId]);
+  }, []);
 
   const sendResize = useCallback((cols, rows) => {
-    if (!activeId) return;
-    const ws = wsMapRef.current.get(activeId);
+    const aid = activeIdRef.current;
+    if (!aid) return;
+    const ws = wsMapRef.current.get(aid);
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify({ type: "resize", cols, rows }));
-  }, [activeId]);
+  }, []);
 
   const registerWriter = useCallback((sessionId, writer) => {
     writerMapRef.current.set(sessionId, writer);

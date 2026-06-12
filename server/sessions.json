@@ -25,7 +25,7 @@
     "cwd": "/mnt/data/code/htak-android/htak",
     "label": "htak",
     "type": "terminal",
-    "alive": true,
+    "alive": false,
     "createdAt": 1781241840734,
     "explorerState": null
   },
@@ -36,7 +36,7 @@
     "cwd": "/home/user",
     "label": "chatGPT",
     "type": "terminal",
-    "alive": true,
+    "alive": false,
     "createdAt": 1781243374770,
     "explorerState": null
   },
@@ -58,7 +58,7 @@
     "cwd": "/home/user",
     "label": "bash",
     "type": "terminal",
-    "alive": true,
+    "alive": false,
     "createdAt": 1781245278976,
     "explorerState": null
   }

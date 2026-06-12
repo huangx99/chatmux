@@ -35,7 +35,7 @@ export default function ChatWindow({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showSearch, activeId]);
+  }, [showSearch]);
 
   const createTerminal = useCallback((session, container) => {
     const existing = termsRef.current.get(session.id);
@@ -288,18 +288,20 @@ function TerminalPanel({ session, isActive, onCreate }) {
   const [ctxMenu, setCtxMenu] = useState(null);
   const [toast, setToast] = useState(null);
 
+  // 延迟挂载：首次激活时才创建终端，之后保持存活
   useEffect(() => {
-    const createIfReady = () => {
-      if (containerRef.current && !initialized.current) {
-        initialized.current = true;
-        cleanupRef.current = onCreate(session, containerRef.current) || null;
-      }
-    };
+    if (!isActive || initialized.current) return;
 
-    createIfReady();
+    if (containerRef.current) {
+      initialized.current = true;
+      cleanupRef.current = onCreate(session, containerRef.current) || null;
+    }
+  }, [isActive, session.id, onCreate]);
 
-    // 当容器被清空时（比如被清理逻辑删除），重新初始化
-    if (containerRef.current && initialized.current && !containerRef.current.hasChildNodes()) {
+  // 终端重建：容器被清空时重新初始化
+  useEffect(() => {
+    if (!isActive || !initialized.current) return;
+    if (containerRef.current && !containerRef.current.hasChildNodes()) {
       initialized.current = false;
       if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
       requestAnimationFrame(() => {
@@ -309,11 +311,15 @@ function TerminalPanel({ session, isActive, onCreate }) {
         }
       });
     }
+  }, [isActive, session.id, onCreate]);
 
+  // 组件卸载时清理终端
+  useEffect(() => {
     return () => {
       if (cleanupRef.current) { cleanupRef.current(); cleanupRef.current = null; }
+      initialized.current = false;
     };
-  }, [session.id, onCreate]);
+  }, [session.id]);
 
   const focusTerminal = () => {
     const textarea = containerRef.current?.querySelector("textarea");
@@ -390,10 +396,14 @@ function TerminalPanel({ session, isActive, onCreate }) {
     setCtxMenu(null);
   };
 
+  const toastTimerRef = useRef(null);
   const showToast = (msg) => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast(msg);
-    setTimeout(() => setToast(null), 2000);
+    toastTimerRef.current = setTimeout(() => setToast(null), 2000);
   };
+  // 组件卸载时清理 toast 定时器
+  useEffect(() => () => { if (toastTimerRef.current) clearTimeout(toastTimerRef.current); }, []);
 
   const handlePaste = async () => {
     setCtxMenu(null);

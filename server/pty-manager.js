@@ -1,6 +1,7 @@
 import * as pty from "node-pty";
 import { randomUUID } from "crypto";
 import { readFileSync, writeFileSync, existsSync } from "fs";
+import { writeFile } from "fs/promises";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 import os from "os";
@@ -12,9 +13,43 @@ const BUFFER_MAX = 1024 * 100; // 每个会话保留最近 100KB 输出
 
 const sessions = new Map();
 
-// ---- 持久化 ----
+// ---- 持久化（防抖异步写入） ----
+
+let saveTimer = null;
+
+function _doSave() {
+  const data = [...sessions.values()].map((s) => ({
+    id: s.id,
+    command: s.command,
+    args: s.args,
+    cwd: s.cwd,
+    label: s.label,
+    type: s.type || (s.command === "__folder__" ? "folder" : "terminal"),
+    alive: s.alive,
+    createdAt: s.createdAt,
+    explorerState: s.explorerState || null,
+  }));
+  const json = JSON.stringify(data, null, 2);
+  writeFile(STORE_FILE, json).catch((e) => {
+    console.error("保存会话失败:", e.message);
+  });
+}
 
 function saveStore() {
+  // 合并 50ms 内的多次写入
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    saveTimer = null;
+    _doSave();
+  }, 50);
+}
+
+// 同步保存（仅用于进程退出等需要确保写入的场景）
+export function saveStoreSync() {
+  if (saveTimer) {
+    clearTimeout(saveTimer);
+    saveTimer = null;
+  }
   const data = [...sessions.values()].map((s) => ({
     id: s.id,
     command: s.command,

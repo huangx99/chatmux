@@ -4,14 +4,9 @@
   "scripts": {
     "dev": "concurrently \"cd server && node index.js\" \"cd client && npx vite --host\"",
     "server": "cd server && node index.js",
-    "client": "cd client && npx vite --host"
-  },
-  "dependencies": {
-    "diff": "^9.0.0",
-    "mammoth": "^1.12.0",
-    "pdfjs-dist": "^6.0.227",
-    "pptxviewjs": "^1.1.9",
-    "xlsx": "^0.18.5"
+    "client": "cd client && npx vite --host",
+    "build": "cd client && npm run build",
+    "setup": "bash setup.sh"
   },
   "devDependencies": {
     "concurrently": "^10.0.3"
