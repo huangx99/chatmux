@@ -3,6 +3,7 @@ import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import AddFriend from "./components/AddFriend";
 import CommandPalette from "./components/CommandPalette";
+import AIChat from "./components/AIChat";
 
 const WS_BASE = () => {
   const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -33,6 +34,9 @@ export default function App() {
   const [showAdd, setShowAdd] = useState(false);
   const [showPalette, setShowPalette] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showAI, setShowAI] = useState(false);
+  const [terminalSelection, setTerminalSelection] = useState(null);
+  const [aiSelectionKey, setAiSelectionKey] = useState(0);
   const [openFolders, setOpenFolders] = useState(new Map()); // 存储打开的文件夹
   const [groups, setGroups] = useState(() => {
     try {
@@ -441,7 +445,17 @@ export default function App() {
         onReconnect={handleReconnect}
         onAddSession={handleAdd}
         onDeleteSession={handleDelete}
+        showAI={showAI}
+        onToggleAI={() => setShowAI(!showAI)}
+        onAskAI={(text) => { setTerminalSelection(text); setAiSelectionKey(k => k + 1); setShowAI(true); }}
       />
+      {showAI && (
+        <AIChat
+          key={aiSelectionKey}
+          onClose={() => setShowAI(false)}
+          terminalSelection={terminalSelection}
+        />
+      )}
       {showAdd && <AddFriend onAdd={handleAdd} onClose={() => setShowAdd(false)} />}
       {showPalette && <CommandPalette sessions={sessions} onAdd={handleAdd} onSelect={handleSelect} onClose={() => setShowPalette(false)} />}
     </div>

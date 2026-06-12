@@ -17,6 +17,9 @@ export default function ChatWindow({
   onAddSession,
   onDeleteSession,
   mobile = false,
+  showAI = false,
+  onToggleAI,
+  onAskAI,
 }) {
   const termsRef = useRef(new Map());
   const [showSearch, setShowSearch] = useState(false);
@@ -228,6 +231,16 @@ export default function ChatWindow({
               🔄 重连
             </button>
           )}
+          <div style={{ flex: 1 }} />
+          {onToggleAI && (
+            <button
+              style={{ ...styles.reconnectBtn, ...(showAI ? { background: "#1f6feb33", color: "#58a6ff" } : {}) }}
+              onClick={onToggleAI}
+              title="AI 助手"
+            >
+              🤖
+            </button>
+          )}
         </div>
       )}
 
@@ -264,6 +277,7 @@ export default function ChatWindow({
               session={s}
               isActive={s.id === activeId}
               onCreate={createTerminal}
+              onAskAI={onAskAI}
             />
           )
         ))}
@@ -276,7 +290,7 @@ export default function ChatWindow({
   );
 }
 
-function TerminalPanel({ session, isActive, onCreate }) {
+function TerminalPanel({ session, isActive, onCreate, onAskAI }) {
   const containerRef = useRef(null);
   const touchRef = useRef({ startY: 0, lastY: 0, scrolling: false });
   const initialized = useRef(false);
@@ -458,6 +472,12 @@ function TerminalPanel({ session, isActive, onCreate }) {
         >
           <CtxMenuItem label="复制" disabled={!ctxMenu.selection} onClick={handleCopy} />
           <CtxMenuItem label="粘贴" onClick={handlePaste} />
+          {onAskAI && ctxMenu.selection && (
+            <>
+              <div style={{ height: 1, background: "#444c56", margin: "4px 0" }} />
+              <CtxMenuItem label="🤖 问 AI" onClick={() => { onAskAI(ctxMenu.selection); setCtxMenu(null); }} />
+            </>
+          )}
         </div>
       )}
       {toast && (

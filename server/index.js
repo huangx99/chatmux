@@ -26,6 +26,7 @@ import {
   saveStoreSync,
 } from "./pty-manager.js";
 import { transferManager, fileClipboard, deleteFiles } from "./file-ops.js";
+import aiRouter from "./ai-proxy.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const isWindows = process.platform === "win32";
@@ -92,6 +93,7 @@ const wss = new WebSocketServer({ server, path: "/ws" });
 
 app.use(express.static(join(__dirname, "../client/dist")));
 app.use(express.json());
+app.use("/api/ai", aiRouter);
 
 // 文件上传配置
 const storage = multer.diskStorage({
