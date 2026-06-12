@@ -253,12 +253,7 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
 
             setStreamContent(`执行中: ${cmd}`);
 
-            // 同时将命令发送到终端显示
-            if (sendInputRef.current) {
-              sendInputRef.current(cmd + "\n");
-            }
-
-            // 执行命令
+            // 执行命令（只执行一次，通过 exec 端点）
             const result = await execCommand(cmd);
 
             // 更新命令状态为完成
