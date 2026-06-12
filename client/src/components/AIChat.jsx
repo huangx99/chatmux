@@ -117,27 +117,31 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
   // 为代码块注入复制按钮
   useEffect(() => {
     if (!listRef.current) return;
-    const pres = listRef.current.querySelectorAll(".ai-msg-content pre");
-    pres.forEach((pre) => {
-      if (pre.querySelector(".cmx-copy-btn")) return;
-      const btn = document.createElement("button");
-      btn.className = "cmx-copy-btn";
-      btn.textContent = "复制";
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        const code = pre.querySelector("code");
-        const text = code ? code.textContent : pre.textContent;
-        navigator.clipboard.writeText(text).then(() => {
-          btn.textContent = "已复制";
-          btn.classList.add("copied");
-          setTimeout(() => {
-            btn.textContent = "复制";
-            btn.classList.remove("copied");
-          }, 2000);
-        });
-      };
-      pre.appendChild(btn);
-    });
+    // 延迟确保 DOM 已更新
+    const timer = setTimeout(() => {
+      const pres = listRef.current.querySelectorAll(".ai-msg-content pre");
+      pres.forEach((pre) => {
+        if (pre.querySelector(".cmx-copy-btn")) return;
+        const btn = document.createElement("button");
+        btn.className = "cmx-copy-btn";
+        btn.textContent = "复制";
+        btn.onclick = (e) => {
+          e.stopPropagation();
+          const code = pre.querySelector("code");
+          const text = code ? code.textContent : pre.textContent;
+          navigator.clipboard.writeText(text).then(() => {
+            btn.textContent = "已复制";
+            btn.classList.add("copied");
+            setTimeout(() => {
+              btn.textContent = "复制";
+              btn.classList.remove("copied");
+            }, 2000);
+          });
+        };
+        pre.appendChild(btn);
+      });
+    }, 100);
+    return () => clearTimeout(timer);
   }, [messages, streamContent]);
 
   // 接收终端选中文本
@@ -170,15 +174,27 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
     return res.json();
   };
 
-  // 在终端会话中执行命令（命令在 bash 中运行，输出被捕获返回）
-  const execInTerminal = async (command) => {
-    const res = await fetch("/api/exec-in-session", {
+  // 执行命令并回显到终端
+  const execAndEcho = async (command) => {
+    // 1. 通过 exec 端点执行命令（获取干净输出）
+    const execRes = await fetch("/api/ai/exec", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ sessionId: activeId, command }),
+      body: JSON.stringify({ command }),
     });
-    if (!res.ok) throw new Error("命令执行失败");
-    return res.json();
+    if (!execRes.ok) throw new Error("命令执行失败");
+    const result = await execRes.json();
+
+    // 2. 将命令和结果回显到终端（用户能在 bash 中看到）
+    if (activeId) {
+      fetch("/api/echo-to-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: activeId, command, result }),
+      }).catch(() => {});
+    }
+
+    return result;
   };
 
   // 发送消息
@@ -279,8 +295,8 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
 
             setStreamContent(`执行中: ${cmd}`);
 
-            // 在终端会话中执行命令（用户能在 bash 中看到）
-            const result = await execInTerminal(cmd);
+            // 执行命令并回显到终端
+            const result = await execAndEcho(cmd);
 
             // 更新命令状态为完成
             setMessages((prev) => {

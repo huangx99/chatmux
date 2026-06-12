@@ -24,7 +24,7 @@ import {
   restoreSessions,
   restartSession,
   saveStoreSync,
-  execInSession,
+  echoToSession,
 } from "./pty-manager.js";
 import { transferManager, fileClipboard, deleteFiles } from "./file-ops.js";
 import aiRouter from "./ai-proxy.js";
@@ -319,18 +319,14 @@ app.get("/api/transfers", (req, res) => {
   res.json(transferManager.getAllTasks());
 });
 
-// REST: 在终端会话中执行命令并捕获输出
-app.post("/api/exec-in-session", async (req, res) => {
-  const { sessionId, command } = req.body;
-  if (!sessionId || !command) {
-    return res.status(400).json({ error: "缺少 sessionId 或 command" });
+// REST: 在终端会话中回显命令和结果
+app.post("/api/echo-to-session", (req, res) => {
+  const { sessionId, command, result } = req.body;
+  if (!sessionId || !command || !result) {
+    return res.status(400).json({ error: "缺少参数" });
   }
-  try {
-    const result = await execInSession(sessionId, command);
-    res.json(result);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  echoToSession(sessionId, command, result);
+  res.json({ ok: true });
 });
 
 // REST: 重命名文件

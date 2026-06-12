@@ -215,65 +215,13 @@ export function writeToSession(id, data) {
   }
 }
 
-// 在 PTY 会话中执行命令并在终端显示结果
-export function execInSession(id, command, timeout = 30000) {
-  return new Promise((resolve) => {
-    const session = sessions.get(id);
-    if (!session || !session.alive || !session.pty) {
-      return resolve({ stdout: "", stderr: "", exitCode: 1, error: "会话不可用" });
-    }
-
-    const shell = session.pty;
-    const uid = Date.now().toString(36);
-    // 使用 ANSI dim + 正常重置 作为 marker（肉眼几乎不可见）
-    const beginMark = `\x1b[2m_CMX${uid}S\x1b[0m`;
-    const endMark = `\x1b[2m_CMX${uid}E\x1b[0m`;
-
-    let output = "";
-    let capturing = false;
-    let done = false;
-
-    const onData = (data) => {
-      if (done) return;
-
-      if (capturing) {
-        if (data.includes(`_CMX${uid}E`)) {
-          const idx = data.indexOf(`_CMX${uid}E`);
-          output += data.slice(0, idx);
-          done = true;
-          cleanup();
-          resolve({ stdout: output.trim(), stderr: "", exitCode: 0 });
-          return;
-        }
-        output += data;
-      } else if (data.includes(`_CMX${uid}S`)) {
-        capturing = true;
-        const idx = data.indexOf(`_CMX${uid}S`) + (`_CMX${uid}S`).length;
-        // 跳过 ANSI 转义和换行
-        let rest = data.slice(idx);
-        rest = rest.replace(/^\x1b\[0m\r?\n/, "");
-        output += rest;
-      }
-    };
-
-    const cleanup = () => {
-      shell.removeListener("data", onData);
-      if (timer) clearTimeout(timer);
-    };
-
-    shell.on("data", onData);
-
-    const timer = setTimeout(() => {
-      if (!done) {
-        done = true;
-        cleanup();
-        resolve({ stdout: output.trim(), stderr: "", exitCode: 0, timeout: true });
-      }
-    }, timeout);
-
-    // printf 输出 dim marker（终端几乎看不到），命令在 subshell 中执行
-    shell.write(`printf '${beginMark}\\n' && (${command}) 2>&1; printf '${endMark}\\n'\n`);
-  });
+// 在终端中回显命令和执行结果（不重复执行，仅用于显示）
+export function echoToSession(id, command, result) {
+  const session = sessions.get(id);
+  if (!session || !session.alive || !session.pty) return;
+  // 用 printf 回显命令和输出，不会触发新的命令执行
+  const escaped = (result.stdout || "(无输出)").replace(/\\/g, "\\\\").replace(/'/g, "'\\''");
+  session.pty.write(`printf '\\e[36m> ${command.replace(/'/g, "'\\''")}\\e[0m\\n' && printf '${escaped}\\n'\n`);
 }
 
 export function resizeSession(id, cols, rows) {
