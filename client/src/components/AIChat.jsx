@@ -77,6 +77,36 @@ export default function AIChat({ onClose, terminalSelection }) {
   // 是否已配置
   const isConfigured = config.apiKey && config.endpoint && config.model;
 
+  // 调用 AI API（非流式，支持 tool calls）
+  const callAI = async (msgs) => {
+    const res = await fetch("/api/ai/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        endpoint: configRef.current.endpoint,
+        apiKey: configRef.current.apiKey,
+        model: configRef.current.model,
+        messages: msgs,
+      }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+      throw new Error(err.error || `请求失败: ${res.status}`);
+    }
+    return res.json();
+  };
+
+  // 执行 shell 命令
+  const execCommand = async (command) => {
+    const res = await fetch("/api/ai/exec", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ command }),
+    });
+    if (!res.ok) throw new Error("命令执行失败");
+    return res.json();
+  };
+
   // 发送消息
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -87,58 +117,103 @@ export default function AIChat({ onClose, terminalSelection }) {
     setMessages(newMessages);
     setInput("");
     setStreaming(true);
-    setStreamContent("");
+    setStreamContent("思考中...");
 
     try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          endpoint: configRef.current.endpoint,
-          apiKey: configRef.current.apiKey,
-          model: configRef.current.model,
-          messages: newMessages.map(({ role, content }) => ({ role, content })),
-        }),
+      // 维护完整消息列表（包含 tool_calls 和 tool 结果）
+      let conversationMessages = newMessages.map(({ role, content, tool_calls, tool_call_id }) => {
+        const msg = { role, content };
+        if (tool_calls) msg.tool_calls = tool_calls;
+        if (tool_call_id) msg.tool_call_id = tool_call_id;
+        return msg;
       });
 
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
-        throw new Error(err.error || `请求失败: ${res.status}`);
-      }
+      let round = 0;
+      const MAX_ROUNDS = 5;
 
-      // 流式读取
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let full = "";
-      let buffer = "";
+      while (round < MAX_ROUNDS) {
+        round++;
+        const data = await callAI(conversationMessages);
+        const choice = data.choices?.[0];
+        if (!choice) throw new Error("AI 未返回有效响应");
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+        const assistantMsg = choice.message;
+        conversationMessages.push(assistantMsg);
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop(); // 保留不完整的行
+        // 没有 tool calls → 文本回复，结束循环
+        if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
+          const content = assistantMsg.content || "";
+          if (content) {
+            setMessages((prev) => [...prev, { role: "assistant", content }]);
+          }
+          break;
+        }
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const data = line.slice(6).trim();
-          if (data === "[DONE]") continue;
-          try {
-            const parsed = JSON.parse(data);
-            const delta = parsed.choices?.[0]?.delta?.content;
-            if (delta) {
-              full += delta;
-              setStreamContent(full);
+        // 有 tool calls → 逐个执行
+        for (const toolCall of assistantMsg.tool_calls) {
+          const fn = toolCall.function;
+          const toolId = toolCall.id;
+
+          if (fn.name === "run_command") {
+            let args;
+            try {
+              args = typeof fn.arguments === "string" ? JSON.parse(fn.arguments) : fn.arguments;
+            } catch {
+              args = { command: fn.arguments };
             }
-          } catch {
-            // 跳过解析错误
+
+            const cmd = args.command || "";
+
+            // 显示正在执行的命令
+            setMessages((prev) => [
+              ...prev,
+              {
+                role: "tool_exec",
+                content: cmd,
+                status: "running",
+              },
+            ]);
+            setStreamContent(`执行中: ${cmd}`);
+
+            // 执行命令
+            const result = await execCommand(cmd);
+
+            // 更新命令状态为完成
+            setMessages((prev) => {
+              const updated = [...prev];
+              const lastIdx = updated.length - 1;
+              if (updated[lastIdx]?.role === "tool_exec") {
+                updated[lastIdx] = {
+                  ...updated[lastIdx],
+                  status: "done",
+                  exitCode: result.exitCode,
+                  output: result.stdout + (result.stderr ? "\n" + result.stderr : ""),
+                };
+              }
+              return updated;
+            });
+
+            // 把命令结果加入对话
+            const output = result.stdout + (result.stderr ? "\n[stderr] " + result.stderr : "");
+            const truncated = output.length > 8000 ? output.slice(0, 8000) + "\n...(输出过长已截断)" : output;
+
+            conversationMessages.push({
+              role: "tool",
+              tool_call_id: toolId,
+              content: truncated || "(无输出)",
+            });
           }
         }
+
+        // 继续循环，让 AI 处理 tool 结果
+        setStreamContent("分析命令输出...");
       }
 
-      if (full) {
-        setMessages((prev) => [...prev, { role: "assistant", content: full }]);
+      if (round >= MAX_ROUNDS) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: "⚠️ 已达到最大工具调用轮数限制" },
+        ]);
       }
     } catch (e) {
       setMessages((prev) => [
@@ -249,22 +324,40 @@ export default function AIChat({ onClose, terminalSelection }) {
           </div>
         ) : (
           <>
-            {messages.map((msg, i) => (
-              <div key={i} style={msg.role === "user" ? styles.userMsg : styles.aiMsg}>
-                <div style={styles.msgAvatar}>
-                  {msg.role === "user" ? "👤" : "🤖"}
+            {messages.map((msg, i) => {
+              if (msg.role === "tool_exec") {
+                return (
+                  <div key={i} style={styles.toolMsg}>
+                    <div style={styles.toolHeader}>
+                      <span>{msg.status === "running" ? "⏳" : msg.exitCode === 0 ? "✅" : "⚠️"}</span>
+                      <code style={styles.toolCmd}>{msg.content}</code>
+                    </div>
+                    {msg.status === "done" && msg.output && (
+                      <pre style={styles.toolOutput}>{msg.output}</pre>
+                    )}
+                    {msg.status === "running" && (
+                      <div style={styles.toolRunning}>执行中...</div>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <div key={i} style={msg.role === "user" ? styles.userMsg : styles.aiMsg}>
+                  <div style={styles.msgAvatar}>
+                    {msg.role === "user" ? "👤" : "🤖"}
+                  </div>
+                  <div
+                    className="ai-msg-content"
+                    style={styles.msgContent}
+                    dangerouslySetInnerHTML={{
+                      __html: msg.role === "assistant"
+                        ? renderMarkdown(msg.content)
+                        : escapeHtml(msg.content || "").replace(/\n/g, "<br/>"),
+                    }}
+                  />
                 </div>
-                <div
-                  className="ai-msg-content"
-                  style={styles.msgContent}
-                  dangerouslySetInnerHTML={{
-                    __html: msg.role === "assistant"
-                      ? renderMarkdown(msg.content)
-                      : escapeHtml(msg.content).replace(/\n/g, "<br/>"),
-                  }}
-                />
-              </div>
-            ))}
+              );
+            })}
             {streaming && streamContent && (
               <div style={styles.aiMsg}>
                 <div style={styles.msgAvatar}>🤖</div>
@@ -518,6 +611,49 @@ const styles = {
     padding: "5px 16px",
     fontSize: 12,
     cursor: "pointer",
+  },
+  toolMsg: {
+    marginBottom: 12,
+    background: "#161b22",
+    border: "1px solid #30363d",
+    borderRadius: 8,
+    overflow: "hidden",
+  },
+  toolHeader: {
+    display: "flex",
+    alignItems: "center",
+    gap: 8,
+    padding: "8px 12px",
+    background: "#1c2128",
+    borderBottom: "1px solid #30363d",
+    fontSize: 12,
+  },
+  toolCmd: {
+    color: "#58a6ff",
+    fontSize: 12,
+    fontFamily: "monospace",
+    flex: 1,
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+  },
+  toolOutput: {
+    margin: 0,
+    padding: "8px 12px",
+    fontSize: 11,
+    lineHeight: 1.5,
+    color: "#8b949e",
+    background: "#0d1117",
+    maxHeight: 200,
+    overflowY: "auto",
+    whiteSpace: "pre-wrap",
+    wordBreak: "break-all",
+    fontFamily: "monospace",
+  },
+  toolRunning: {
+    padding: "6px 12px",
+    fontSize: 12,
+    color: "#58a6ff",
   },
 };
 
