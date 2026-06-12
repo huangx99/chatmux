@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from "react";
+import React, { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import Sidebar from "./components/Sidebar";
 import ChatWindow from "./components/ChatWindow";
 import AddFriend from "./components/AddFriend";
@@ -41,6 +41,13 @@ export default function App() {
       return {};
     }
   });
+  const [sessionOrder, setSessionOrder] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("chatmux-order") || "[]");
+    } catch {
+      return [];
+    }
+  });
 
   const wsMapRef = useRef(new Map());
   const writerMapRef = useRef(new Map());
@@ -66,6 +73,10 @@ export default function App() {
   useEffect(() => {
     localStorage.setItem("chatmux-groups", JSON.stringify(groups));
   }, [groups]);
+
+  useEffect(() => {
+    localStorage.setItem("chatmux-order", JSON.stringify(sessionOrder));
+  }, [sessionOrder]);
 
   const initRef = useRef(false);
   useEffect(() => {
@@ -305,6 +316,10 @@ export default function App() {
     setGroups((prev) => ({ ...prev, [id]: group }));
   }, []);
 
+  const handleReorder = useCallback((newOrder) => {
+    setSessionOrder(newOrder);
+  }, []);
+
   const handleReconnect = useCallback((id) => { attachSession(id); }, [attachSession]);
 
   const sendInput = useCallback((data) => {
@@ -326,6 +341,33 @@ export default function App() {
     return () => writerMapRef.current.delete(sessionId);
   }, []);
 
+  // 应用自定义排序
+  const orderedSessions = useMemo(() => {
+    if (sessionOrder.length === 0) return sessions;
+    const orderMap = new Map(sessionOrder.map((id, i) => [id, i]));
+    return [...sessions].sort((a, b) => {
+      const ia = orderMap.has(a.id) ? orderMap.get(a.id) : Infinity;
+      const ib = orderMap.has(b.id) ? orderMap.get(b.id) : Infinity;
+      return ia - ib;
+    });
+  }, [sessions, sessionOrder]);
+
+  // 同步排序：新会话加入排序列表
+  useEffect(() => {
+    if (sessions.length === 0) return;
+    const ids = sessions.map(s => s.id);
+    const known = new Set(sessionOrder);
+    const newIds = ids.filter(id => !known.has(id));
+    if (newIds.length > 0) {
+      setSessionOrder(prev => [...prev, ...newIds]);
+    }
+    // 清理已删除的会话
+    const currentSet = new Set(ids);
+    if (sessionOrder.some(id => !currentSet.has(id))) {
+      setSessionOrder(prev => prev.filter(id => currentSet.has(id)));
+    }
+  }, [sessions]);
+
   const activeSession = sessions.find((s) => s.id === activeId);
 
   // 移动端布局
@@ -345,13 +387,14 @@ export default function App() {
         {sidebarOpen && <div style={mStyles.overlay} onClick={() => setSidebarOpen(false)} />}
         <div style={{ ...mStyles.drawer, ...(sidebarOpen ? mStyles.drawerOpen : {}) }}>
           <Sidebar
-            sessions={sessions}
+            sessions={orderedSessions}
             activeId={activeId}
             onSelect={handleSelect}
             onAdd={() => { setShowAdd(true); setSidebarOpen(false); }}
             onDelete={handleDelete}
             onRename={handleRename}
             onGroupChange={handleGroupChange}
+            onReorder={handleReorder}
           />
         </div>
 
@@ -380,13 +423,14 @@ export default function App() {
   return (
     <div style={styles.app}>
       <Sidebar
-        sessions={sessions}
+        sessions={orderedSessions}
         activeId={activeId}
         onSelect={handleSelect}
         onAdd={() => setShowAdd(true)}
         onDelete={handleDelete}
         onRename={handleRename}
         onGroupChange={handleGroupChange}
+        onReorder={handleReorder}
       />
       <ChatWindow
         sessions={sessions}
