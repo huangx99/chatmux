@@ -24,6 +24,31 @@ const TOOLS = [
   },
 ];
 
+// 清理 tool 相关消息，转为普通消息格式
+function cleanToolMessages(messages) {
+  return messages
+    .filter((m) => m.role !== "tool") // 移除 tool 结果消息
+    .map((m) => {
+      // assistant 的 tool_calls → 转为纯文本
+      if (m.role === "assistant" && m.tool_calls) {
+        const callDesc = m.tool_calls
+          .map((tc) => {
+            try {
+              const args = typeof tc.function.arguments === "string"
+                ? JSON.parse(tc.function.arguments)
+                : tc.function.arguments;
+              return `[执行命令] ${args.command || tc.function.arguments}`;
+            } catch {
+              return `[调用工具] ${tc.function.name}`;
+            }
+          })
+          .join("\n");
+        return { role: "assistant", content: (m.content || "") + "\n" + callDesc };
+      }
+      return m;
+    });
+}
+
 // System prompt
 const SYSTEM_PROMPT = {
   role: "system",
@@ -52,7 +77,8 @@ router.post("/chat", async (req, res) => {
     // 注入 system prompt 和 tools
     const fullMessages = [SYSTEM_PROMPT, ...messages];
 
-    const apiRes = await fetch(url, {
+    // 第一次尝试：带 tools
+    let apiRes = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -66,11 +92,40 @@ router.post("/chat", async (req, res) => {
       }),
     });
 
+    // 如果 API 不支持 tool 角色，清理后重试
     if (!apiRes.ok) {
       const errText = await apiRes.text();
-      return res
-        .status(apiRes.status)
-        .json({ error: `API 错误 (${apiRes.status}): ${errText}` });
+      const isToolError = errText.includes("tool") || errText.includes("role") || apiRes.status === 400;
+
+      if (isToolError) {
+        // 清理消息：移除 tool 角色，转换 assistant 的 tool_calls
+        const cleanMessages = cleanToolMessages(fullMessages);
+
+        apiRes = await fetch(url, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model,
+            messages: cleanMessages,
+            stream: false,
+          }),
+        });
+
+        if (!apiRes.ok) {
+          const err2 = await apiRes.text();
+          return res.status(apiRes.status).json({ error: `API 错误 (${apiRes.status}): ${err2}` });
+        }
+
+        const data = await apiRes.json();
+        // 标记不支持 tools，客户端不再发起 tool call
+        data._noTools = true;
+        return res.json(data);
+      }
+
+      return res.status(apiRes.status).json({ error: `API 错误 (${apiRes.status}): ${errText}` });
     }
 
     const data = await apiRes.json();

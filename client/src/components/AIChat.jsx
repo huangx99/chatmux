@@ -142,6 +142,15 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
         const assistantMsg = choice.message;
         conversationMessages.push(assistantMsg);
 
+        // API 不支持 tools，直接返回文本
+        if (data._noTools) {
+          const content = assistantMsg.content || "";
+          if (content) {
+            setMessages((prev) => [...prev, { role: "assistant", content }]);
+          }
+          break;
+        }
+
         // 没有 tool calls → 文本回复，结束循环
         if (!assistantMsg.tool_calls || assistantMsg.tool_calls.length === 0) {
           const content = assistantMsg.content || "";
