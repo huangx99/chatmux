@@ -10,6 +10,7 @@ const defaultConfig = {
   endpoint: "https://api.openai.com/v1",
   apiKey: "",
   model: "gpt-4o",
+  autoExecute: false,
 };
 
 function loadConfig() {
@@ -49,6 +50,51 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
   configRef.current = config;
   const sendInputRef = useRef(sendInput);
   sendInputRef.current = sendInput;
+
+  // 命令确认机制
+  const confirmMapRef = useRef(new Map()); // id → { resolve, reject }
+  const confirmIdRef = useRef(0);
+
+  // 等待用户确认命令执行
+  const waitForConfirm = (cmd) => {
+    const id = ++confirmIdRef.current;
+    return new Promise((resolve) => {
+      confirmMapRef.current.set(id, { resolve });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "tool_confirm",
+          confirmId: id,
+          content: cmd,
+          status: "pending",
+        },
+      ]);
+    });
+  };
+
+  // 用户点击执行
+  const handleConfirmExec = (id) => {
+    const entry = confirmMapRef.current.get(id);
+    if (entry) {
+      entry.resolve("execute");
+      confirmMapRef.current.delete(id);
+    }
+    setMessages((prev) =>
+      prev.map((m) => (m.confirmId === id ? { ...m, status: "confirmed" } : m))
+    );
+  };
+
+  // 用户点击跳过
+  const handleConfirmSkip = (id) => {
+    const entry = confirmMapRef.current.get(id);
+    if (entry) {
+      entry.resolve("skip");
+      confirmMapRef.current.delete(id);
+    }
+    setMessages((prev) =>
+      prev.map((m) => (m.confirmId === id ? { ...m, status: "skipped" } : m))
+    );
+  };
 
   // 保存配置
   useEffect(() => {
@@ -176,16 +222,35 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
             }
 
             const cmd = args.command || "";
+            const autoExec = configRef.current.autoExecute;
 
-            // 显示正在执行的命令
-            setMessages((prev) => [
-              ...prev,
-              {
-                role: "tool_exec",
-                content: cmd,
-                status: "running",
-              },
-            ]);
+            if (!autoExec) {
+              // 需要用户确认
+              const decision = await waitForConfirm(cmd);
+              if (decision === "skip") {
+                conversationMessages.push({
+                  role: "tool",
+                  tool_call_id: toolId,
+                  content: "用户拒绝执行此命令。",
+                });
+                continue;
+              }
+              // 用户确认执行，更新状态
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.role === "tool_confirm" && m.content === cmd && m.status === "confirmed"
+                    ? { ...m, role: "tool_exec", status: "running" }
+                    : m
+                )
+              );
+            } else {
+              // 自动执行，直接显示
+              setMessages((prev) => [
+                ...prev,
+                { role: "tool_exec", content: cmd, status: "running" },
+              ]);
+            }
+
             setStreamContent(`执行中: ${cmd}`);
 
             // 同时将命令发送到终端显示
@@ -193,20 +258,22 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
               sendInputRef.current(cmd + "\n");
             }
 
-            // 执行命令（获取干净输出给 AI 分析）
+            // 执行命令
             const result = await execCommand(cmd);
 
             // 更新命令状态为完成
             setMessages((prev) => {
               const updated = [...prev];
-              const lastIdx = updated.length - 1;
-              if (updated[lastIdx]?.role === "tool_exec") {
-                updated[lastIdx] = {
-                  ...updated[lastIdx],
-                  status: "done",
-                  exitCode: result.exitCode,
-                  output: result.stdout + (result.stderr ? "\n" + result.stderr : ""),
-                };
+              for (let i = updated.length - 1; i >= 0; i--) {
+                if (updated[i].role === "tool_exec" && updated[i].content === cmd && updated[i].status === "running") {
+                  updated[i] = {
+                    ...updated[i],
+                    status: "done",
+                    exitCode: result.exitCode,
+                    output: result.stdout + (result.stderr ? "\n" + result.stderr : ""),
+                  };
+                  break;
+                }
               }
               return updated;
             });
@@ -322,6 +389,17 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
           <div style={styles.settingHint}>
             支持所有 OpenAI 兼容接口（OpenAI / DeepSeek / Claude / Ollama 等）
           </div>
+          <div style={{ ...styles.settingRow, display: "flex", alignItems: "center", gap: 8, marginTop: 8 }}>
+            <input
+              type="checkbox"
+              id="autoExec"
+              checked={config.autoExecute}
+              onChange={(e) => setConfig({ ...config, autoExecute: e.target.checked })}
+            />
+            <label htmlFor="autoExec" style={{ fontSize: 12, color: "#c9d1d9", cursor: "pointer" }}>
+              自动执行命令（跳过确认）
+            </label>
+          </div>
         </div>
       )}
 
@@ -343,6 +421,32 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
         ) : (
           <>
             {messages.map((msg, i) => {
+              if (msg.role === "tool_confirm") {
+                return (
+                  <div key={i} style={styles.toolMsg}>
+                    <div style={styles.toolHeader}>
+                      <span>🔧</span>
+                      <code style={styles.toolCmd}>{msg.content}</code>
+                    </div>
+                    {msg.status === "pending" && (
+                      <div style={styles.confirmActions}>
+                        <button style={styles.confirmBtn} onClick={() => handleConfirmExec(msg.confirmId)}>
+                          ▶ 执行
+                        </button>
+                        <button style={styles.skipBtn} onClick={() => handleConfirmSkip(msg.confirmId)}>
+                          ✕ 跳过
+                        </button>
+                      </div>
+                    )}
+                    {msg.status === "confirmed" && (
+                      <div style={styles.toolRunning}>✓ 已确认，执行中...</div>
+                    )}
+                    {msg.status === "skipped" && (
+                      <div style={styles.toolSkipped}>⊘ 已跳过</div>
+                    )}
+                  </div>
+                );
+              }
               if (msg.role === "tool_exec") {
                 return (
                   <div key={i} style={styles.toolMsg}>
@@ -672,6 +776,36 @@ const styles = {
     padding: "6px 12px",
     fontSize: 12,
     color: "#58a6ff",
+  },
+  toolSkipped: {
+    padding: "6px 12px",
+    fontSize: 12,
+    color: "#484f58",
+    fontStyle: "italic",
+  },
+  confirmActions: {
+    display: "flex",
+    gap: 8,
+    padding: "8px 12px",
+  },
+  confirmBtn: {
+    background: "#238636",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    padding: "5px 14px",
+    fontSize: 12,
+    cursor: "pointer",
+    fontWeight: 500,
+  },
+  skipBtn: {
+    background: "#21262d",
+    color: "#8b949e",
+    border: "1px solid #30363d",
+    borderRadius: 6,
+    padding: "5px 14px",
+    fontSize: 12,
+    cursor: "pointer",
   },
 };
 
