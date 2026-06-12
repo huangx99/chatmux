@@ -284,21 +284,6 @@ export default function App() {
   const handleDelete = useCallback((id) => {
     const fallbackId = pickFallbackSessionId(sessionsRef.current, id);
 
-    // 处理文件夹类型的删除
-    if (id.startsWith("folder_")) {
-      setOpenFolders((prev) => {
-        const next = new Map(prev);
-        next.delete(id);
-        return next;
-      });
-      setSessions((prev) => prev.filter((s) => s.id !== id));
-      setActiveId((current) => {
-        if (current === id) { activeIdRef.current = fallbackId; return fallbackId; }
-        return current;
-      });
-      return;
-    }
-
     const ws = wsMapRef.current.get(id);
     if (ws) { ws.close(); wsMapRef.current.delete(id); }
     writerMapRef.current.delete(id);

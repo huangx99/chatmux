@@ -5,10 +5,9 @@ import { fileURLToPath } from "url";
 import { basename, dirname, join, relative, resolve } from "path";
 import { readdir, stat, unlink, rename, copyFile, readFile, writeFile, mkdir } from "fs/promises";
 import { createReadStream, existsSync } from "fs";
-import { exec, execFile } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 
-const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
 import os from "os";
 import multer from "multer";

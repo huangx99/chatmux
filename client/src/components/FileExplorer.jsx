@@ -173,9 +173,6 @@ export default function FileExplorer({ sessionId, initialPath, onOpenTerminal, o
   };
 
   // 加载传输任务
-  const transfersRef = useRef(transfers);
-  transfersRef.current = transfers;
-
   const loadTransfers = useCallback(async () => {
     try {
       const res = await fetch("/api/transfers");
