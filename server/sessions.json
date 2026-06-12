@@ -50,5 +50,16 @@
     "alive": true,
     "createdAt": 1781244276107,
     "explorerState": null
+  },
+  {
+    "id": "e205d3f2-7ca6-4e6f-8e8c-620978f78d12",
+    "command": "bash",
+    "args": [],
+    "cwd": "/home/user",
+    "label": "bash",
+    "type": "terminal",
+    "alive": true,
+    "createdAt": 1781245278976,
+    "explorerState": null
   }
 ]

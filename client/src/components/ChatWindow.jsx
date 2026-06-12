@@ -23,10 +23,11 @@ export default function ChatWindow({
 
   const activeSession = sessions.find((s) => s.id === activeId);
 
-  // Ctrl+F
+  // Ctrl+F / Ctrl+Shift+C / Ctrl+Shift+V
   useEffect(() => {
     const handler = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "f") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key === "f") {
         e.preventDefault();
         setShowSearch(true);
       }
@@ -34,7 +35,7 @@ export default function ChatWindow({
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [showSearch]);
+  }, [showSearch, activeId]);
 
   const createTerminal = useCallback((session, container) => {
     const existing = termsRef.current.get(session.id);
@@ -72,6 +73,33 @@ export default function ChatWindow({
     term.open(container);
     requestAnimationFrame(() => fitAddon.fit());
 
+    // 剪贴板：Ctrl+C 复制选中文本（无选区时发 SIGINT），Ctrl+V 粘贴
+    term.attachCustomKeyEventHandler((e) => {
+      if (e.type !== "keydown") return true;
+      const mod = e.ctrlKey || e.metaKey;
+
+      // Ctrl+C：有选区时复制，无选区时发 SIGINT
+      if (mod && e.key === "c") {
+        if (term.hasSelection()) {
+          navigator.clipboard.writeText(term.getSelection());
+          return false;
+        }
+        return true;
+      }
+
+      // Ctrl+V：读取剪贴板并发送给 PTY
+      if (mod && e.key === "v") {
+        navigator.clipboard.readText().then((text) => {
+          if (text && session.id === activeIdRef.current) {
+            sendInputRef.current(text);
+          }
+        }).catch((err) => console.warn("剪贴板读取失败:", err));
+        return false;
+      }
+
+      return true;
+    });
+
     term.onData((data) => {
       if (session.id === activeIdRef.current) {
         sendInputRef.current(data);
@@ -85,7 +113,7 @@ export default function ChatWindow({
     });
 
     termsRef.current.set(session.id, { term, fitAddon, searchAddon, container });
-    // 存到 DOM 上方便触摸滚动访问
+    // 存到 DOM 上方便触摸滚动和右键菜单访问
     container._chatmux_term = term;
     registerWriter(session.id, (data) => term.write(data));
 
@@ -257,6 +285,8 @@ function TerminalPanel({ session, isActive, onCreate }) {
   const touchRef = useRef({ startY: 0, lastY: 0, scrolling: false });
   const initialized = useRef(false);
   const cleanupRef = useRef(null);
+  const [ctxMenu, setCtxMenu] = useState(null);
+  const [toast, setToast] = useState(null);
 
   useEffect(() => {
     const createIfReady = () => {
@@ -321,10 +351,70 @@ function TerminalPanel({ session, isActive, onCreate }) {
 
   const handleTouchEnd = () => {
     if (!touchRef.current.scrolling) {
-      // 没有滚动 = 点击，聚焦终端
       focusTerminal();
     }
     touchRef.current.scrolling = false;
+  };
+
+  // 右键菜单
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const onContextMenu = (e) => {
+      e.preventDefault();
+      const term = container._chatmux_term;
+      const sel = term?.hasSelection() ? term.getSelection() : "";
+      setCtxMenu({ x: e.clientX, y: e.clientY, selection: sel });
+    };
+    container.addEventListener("contextmenu", onContextMenu);
+    return () => container.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
+  // 点击外部关闭菜单
+  useEffect(() => {
+    if (!ctxMenu) return;
+    const close = () => setCtxMenu(null);
+    window.addEventListener("click", close);
+    window.addEventListener("keydown", close);
+    return () => {
+      window.removeEventListener("click", close);
+      window.removeEventListener("keydown", close);
+    };
+  }, [ctxMenu]);
+
+  const handleCopy = () => {
+    const sel = ctxMenu?.selection;
+    if (sel) {
+      navigator.clipboard.writeText(sel).catch(() => {});
+    }
+    setCtxMenu(null);
+  };
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  const handlePaste = async () => {
+    setCtxMenu(null);
+    try {
+      let text = "";
+      if (navigator.clipboard?.readText) {
+        text = await navigator.clipboard.readText();
+      }
+      if (text) {
+        const term = containerRef.current?._chatmux_term;
+        if (term) {
+          term.paste(text);
+          showToast("已粘贴 " + text.length + " 字符");
+        }
+      } else {
+        showToast("剪贴板为空");
+      }
+    } catch (err) {
+      console.error("粘贴失败:", err);
+      showToast("粘贴失败: " + err.message);
+    }
   };
 
   return (
@@ -341,8 +431,63 @@ function TerminalPanel({ session, isActive, onCreate }) {
         overflow: "hidden",
         touchAction: "none",
         minHeight: 0,
+        position: "relative",
       }}
-    />
+    >
+      {ctxMenu && (
+        <div
+          style={{
+            position: "fixed",
+            left: ctxMenu.x,
+            top: ctxMenu.y,
+            background: "#2d333b",
+            border: "1px solid #444c56",
+            borderRadius: 6,
+            padding: "4px 0",
+            minWidth: 140,
+            zIndex: 9999,
+            boxShadow: "0 4px 12px rgba(0,0,0,.4)",
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <CtxMenuItem label="复制" disabled={!ctxMenu.selection} onClick={handleCopy} />
+          <CtxMenuItem label="粘贴" onClick={handlePaste} />
+        </div>
+      )}
+      {toast && (
+        <div style={{
+          position: "fixed", bottom: 40, left: "50%", transform: "translateX(-50%)",
+          background: "#2d333b", color: "#c9d1d9", padding: "8px 16px",
+          borderRadius: 6, fontSize: 13, zIndex: 10000,
+          boxShadow: "0 4px 12px rgba(0,0,0,.4)",
+          pointerEvents: "none",
+        }}>
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CtxMenuItem({ label, disabled, onClick }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <div
+      style={{
+        padding: "6px 16px",
+        color: disabled ? "#484f58" : hover ? "#fff" : "#c9d1d9",
+        background: hover && !disabled ? "#316dca" : "transparent",
+        fontSize: 13,
+        cursor: disabled ? "default" : "pointer",
+        userSelect: "none",
+        transition: "background .1s",
+      }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={disabled ? undefined : onClick}
+    >
+      {label}
+    </div>
   );
 }
 
