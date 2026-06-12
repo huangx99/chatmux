@@ -215,7 +215,7 @@ export function writeToSession(id, data) {
   }
 }
 
-// 在 PTY 会话中执行命令：终端显示 + 捕获输出
+// 在 PTY 会话中执行命令并在终端显示结果
 export function execInSession(id, command, timeout = 30000) {
   return new Promise((resolve) => {
     const session = sessions.get(id);
@@ -225,9 +225,9 @@ export function execInSession(id, command, timeout = 30000) {
 
     const shell = session.pty;
     const uid = Date.now().toString(36);
-    const beginMark = `__CMX_B_${uid}__`;
-    const endMark = `__CMX_E_${uid}__`;
-    const exitMark = `__CMX_X_${uid}__`;
+    // 使用 ANSI dim + 正常重置 作为 marker（肉眼几乎不可见）
+    const beginMark = `\x1b[2m_CMX${uid}S\x1b[0m`;
+    const endMark = `\x1b[2m_CMX${uid}E\x1b[0m`;
 
     let output = "";
     let capturing = false;
@@ -237,29 +237,22 @@ export function execInSession(id, command, timeout = 30000) {
       if (done) return;
 
       if (capturing) {
-        if (data.includes(endMark)) {
-          const idx = data.indexOf(endMark);
+        if (data.includes(`_CMX${uid}E`)) {
+          const idx = data.indexOf(`_CMX${uid}E`);
           output += data.slice(0, idx);
           done = true;
           cleanup();
-          // 查询退出码
-          shell.write(`echo ${exitMark} $?\n`);
-          // 等退出码输出后返回
-          setTimeout(() => {
-            // 从输出中提取退出码
-            const exitMatch = output.match(new RegExp(`${exitMark}\\s*(\\d+)`));
-            const exitCode = exitMatch ? parseInt(exitMatch[1]) : 0;
-            // 清理 marker 残留
-            output = output.replace(new RegExp(`${exitMark}\\s*\\d+`, "g"), "").trim();
-            resolve({ stdout: output.trim(), stderr: "", exitCode });
-          }, 300);
+          resolve({ stdout: output.trim(), stderr: "", exitCode: 0 });
           return;
         }
         output += data;
-      } else if (data.includes(beginMark)) {
+      } else if (data.includes(`_CMX${uid}S`)) {
         capturing = true;
-        const idx = data.indexOf(beginMark) + beginMark.length;
-        output += data.slice(idx).replace(/^\r?\n/, "");
+        const idx = data.indexOf(`_CMX${uid}S`) + (`_CMX${uid}S`).length;
+        // 跳过 ANSI 转义和换行
+        let rest = data.slice(idx);
+        rest = rest.replace(/^\x1b\[0m\r?\n/, "");
+        output += rest;
       }
     };
 
@@ -278,9 +271,8 @@ export function execInSession(id, command, timeout = 30000) {
       }
     }, timeout);
 
-    // 用 subshell 包裹：(命令) 的输出不包含 marker 本身
-    // 用 printf 输出 marker 避免 echo 被 PS1 干扰
-    shell.write(`printf '\\n%s\\n' '${beginMark}' && (${command}) 2>&1; printf '\\n%s\\n' '${endMark}'\n`);
+    // printf 输出 dim marker（终端几乎看不到），命令在 subshell 中执行
+    shell.write(`printf '${beginMark}\\n' && (${command}) 2>&1; printf '${endMark}\\n'\n`);
   });
 }
 

@@ -114,6 +114,32 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
     }
   }, [messages, streamContent]);
 
+  // 为代码块注入复制按钮
+  useEffect(() => {
+    if (!listRef.current) return;
+    const pres = listRef.current.querySelectorAll(".ai-msg-content pre");
+    pres.forEach((pre) => {
+      if (pre.querySelector(".cmx-copy-btn")) return;
+      const btn = document.createElement("button");
+      btn.className = "cmx-copy-btn";
+      btn.textContent = "复制";
+      btn.onclick = (e) => {
+        e.stopPropagation();
+        const code = pre.querySelector("code");
+        const text = code ? code.textContent : pre.textContent;
+        navigator.clipboard.writeText(text).then(() => {
+          btn.textContent = "已复制";
+          btn.classList.add("copied");
+          setTimeout(() => {
+            btn.textContent = "复制";
+            btn.classList.remove("copied");
+          }, 2000);
+        });
+      };
+      pre.appendChild(btn);
+    });
+  }, [messages, streamContent]);
+
   // 接收终端选中文本
   useEffect(() => {
     if (terminalSelection && !streaming) {
@@ -815,6 +841,7 @@ styleTag.textContent = `
     overflow-x: auto;
     font-size: 12px;
     margin: 6px 0;
+    position: relative;
   }
   .ai-msg-content code {
     background: #161b22;
@@ -848,6 +875,32 @@ styleTag.textContent = `
   @keyframes pulse {
     0%, 100% { opacity: 1; }
     50% { opacity: 0.5; }
+  }
+  .cmx-copy-btn {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    background: #21262d;
+    border: 1px solid #30363d;
+    border-radius: 4px;
+    color: #8b949e;
+    font-size: 11px;
+    padding: 2px 8px;
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 1;
+  }
+  .ai-msg-content pre:hover .cmx-copy-btn {
+    opacity: 1;
+  }
+  .cmx-copy-btn:hover {
+    background: #30363d;
+    color: #c9d1d9;
+  }
+  .cmx-copy-btn.copied {
+    color: #3fb950;
+    border-color: #3fb950;
   }
 `;
 if (!document.getElementById("ai-chat-styles")) {
