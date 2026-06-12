@@ -24,29 +24,38 @@ const TOOLS = [
   },
 ];
 
-// 清理 tool 相关消息，转为普通消息格式
+// 清理 tool 相关消息，只保留 system/user/assistant 标准角色
 function cleanToolMessages(messages) {
-  return messages
-    .filter((m) => m.role !== "tool") // 移除 tool 结果消息
-    .map((m) => {
+  const VALID_ROLES = new Set(["system", "user", "assistant"]);
+  const result = [];
+  for (const m of messages) {
+    // 只保留标准角色
+    if (!VALID_ROLES.has(m.role)) continue;
+
+    if (m.role === "assistant" && m.tool_calls) {
       // assistant 的 tool_calls → 转为纯文本
-      if (m.role === "assistant" && m.tool_calls) {
-        const callDesc = m.tool_calls
-          .map((tc) => {
-            try {
-              const args = typeof tc.function.arguments === "string"
-                ? JSON.parse(tc.function.arguments)
-                : tc.function.arguments;
-              return `[执行命令] ${args.command || tc.function.arguments}`;
-            } catch {
-              return `[调用工具] ${tc.function.name}`;
-            }
-          })
-          .join("\n");
-        return { role: "assistant", content: (m.content || "") + "\n" + callDesc };
-      }
-      return m;
-    });
+      const callDesc = m.tool_calls
+        .map((tc) => {
+          try {
+            const args = typeof tc.function.arguments === "string"
+              ? JSON.parse(tc.function.arguments)
+              : tc.function.arguments;
+            return `[执行命令] ${args.command || tc.function.arguments}`;
+          } catch {
+            return `[调用工具] ${tc.function.name}`;
+          }
+        })
+        .join("\n");
+      result.push({
+        role: "assistant",
+        content: (m.content || "") + "\n" + callDesc,
+      });
+    } else {
+      // 只保留 role 和 content，移除 tool_calls 等额外字段
+      result.push({ role: m.role, content: m.content || "" });
+    }
+  }
+  return result;
 }
 
 // System prompt
@@ -95,7 +104,7 @@ router.post("/chat", async (req, res) => {
     // 如果 API 不支持 tool 角色，清理后重试
     if (!apiRes.ok) {
       const errText = await apiRes.text();
-      const isToolError = errText.includes("tool") || errText.includes("role") || apiRes.status === 400;
+      const isToolError = errText.includes("role") || errText.includes("tool") || errText.includes("Tool") || apiRes.status === 400;
 
       if (isToolError) {
         // 清理消息：移除 tool 角色，转换 assistant 的 tool_calls

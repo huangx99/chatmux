@@ -122,13 +122,15 @@ export default function AIChat({ onClose, terminalSelection, sendInput, activeId
     setStreamContent("思考中...");
 
     try {
-      // 维护完整消息列表（包含 tool_calls 和 tool 结果）
-      let conversationMessages = newMessages.map(({ role, content, tool_calls, tool_call_id }) => {
-        const msg = { role, content };
-        if (tool_calls) msg.tool_calls = tool_calls;
-        if (tool_call_id) msg.tool_call_id = tool_call_id;
-        return msg;
-      });
+      // 维护完整消息列表（过滤掉 UI 专用的 tool_exec 消息）
+      let conversationMessages = newMessages
+        .filter((m) => m.role !== "tool_exec")
+        .map(({ role, content, tool_calls, tool_call_id }) => {
+          const msg = { role, content };
+          if (tool_calls) msg.tool_calls = tool_calls;
+          if (tool_call_id) msg.tool_call_id = tool_call_id;
+          return msg;
+        });
 
       let round = 0;
       const MAX_ROUNDS = 5;
