@@ -24,6 +24,7 @@ import {
   restoreSessions,
   restartSession,
   saveStoreSync,
+  execInSession,
 } from "./pty-manager.js";
 import { transferManager, fileClipboard, deleteFiles } from "./file-ops.js";
 import aiRouter from "./ai-proxy.js";
@@ -316,6 +317,20 @@ app.get("/api/clipboard", (req, res) => {
 // REST: 获取传输任务列表
 app.get("/api/transfers", (req, res) => {
   res.json(transferManager.getAllTasks());
+});
+
+// REST: 在终端会话中执行命令并捕获输出
+app.post("/api/exec-in-session", async (req, res) => {
+  const { sessionId, command } = req.body;
+  if (!sessionId || !command) {
+    return res.status(400).json({ error: "缺少 sessionId 或 command" });
+  }
+  try {
+    const result = await execInSession(sessionId, command);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // REST: 重命名文件

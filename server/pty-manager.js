@@ -215,6 +215,75 @@ export function writeToSession(id, data) {
   }
 }
 
+// 在 PTY 会话中执行命令：终端显示 + 捕获输出
+export function execInSession(id, command, timeout = 30000) {
+  return new Promise((resolve) => {
+    const session = sessions.get(id);
+    if (!session || !session.alive || !session.pty) {
+      return resolve({ stdout: "", stderr: "", exitCode: 1, error: "会话不可用" });
+    }
+
+    const shell = session.pty;
+    const uid = Date.now().toString(36);
+    const beginMark = `__CMX_B_${uid}__`;
+    const endMark = `__CMX_E_${uid}__`;
+    const exitMark = `__CMX_X_${uid}__`;
+
+    let output = "";
+    let capturing = false;
+    let done = false;
+
+    const onData = (data) => {
+      if (done) return;
+
+      if (capturing) {
+        if (data.includes(endMark)) {
+          const idx = data.indexOf(endMark);
+          output += data.slice(0, idx);
+          done = true;
+          cleanup();
+          // 查询退出码
+          shell.write(`echo ${exitMark} $?\n`);
+          // 等退出码输出后返回
+          setTimeout(() => {
+            // 从输出中提取退出码
+            const exitMatch = output.match(new RegExp(`${exitMark}\\s*(\\d+)`));
+            const exitCode = exitMatch ? parseInt(exitMatch[1]) : 0;
+            // 清理 marker 残留
+            output = output.replace(new RegExp(`${exitMark}\\s*\\d+`, "g"), "").trim();
+            resolve({ stdout: output.trim(), stderr: "", exitCode });
+          }, 300);
+          return;
+        }
+        output += data;
+      } else if (data.includes(beginMark)) {
+        capturing = true;
+        const idx = data.indexOf(beginMark) + beginMark.length;
+        output += data.slice(idx).replace(/^\r?\n/, "");
+      }
+    };
+
+    const cleanup = () => {
+      shell.removeListener("data", onData);
+      if (timer) clearTimeout(timer);
+    };
+
+    shell.on("data", onData);
+
+    const timer = setTimeout(() => {
+      if (!done) {
+        done = true;
+        cleanup();
+        resolve({ stdout: output.trim(), stderr: "", exitCode: 0, timeout: true });
+      }
+    }, timeout);
+
+    // 用 subshell 包裹：(命令) 的输出不包含 marker 本身
+    // 用 printf 输出 marker 避免 echo 被 PS1 干扰
+    shell.write(`printf '\\n%s\\n' '${beginMark}' && (${command}) 2>&1; printf '\\n%s\\n' '${endMark}'\n`);
+  });
+}
+
 export function resizeSession(id, cols, rows) {
   const session = sessions.get(id);
   if (session && session.alive && session.pty) {
